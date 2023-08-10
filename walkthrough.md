@@ -28,6 +28,19 @@ _________________________________
 #### lesson 2: The Profile Resource
 3. [REST Freamework Serializers](#rest-framework-serializers)
     - Walkthrough: https://youtu.be/V7KNSGrSLPg
+    - how to write a class view to list all profiles
+        - how to write a ProfileList
+        - how to write an APIView
+    - Learn what Serializers are and why they're useful
+        - what the similarities are between ModelForms and ModelSerializers
+    - how to write a profile model serializer
+4. [Populating Serializer ReadOnly Field using dot notation]()
+    - Walkthrough: https://youtu.be/e3sJYZ_UyBk
+        - The `source` attribute and its string value explained
+        - how to manipulate ReadOnlyFields (using dot notation)
+            - targeting subfields within data models / tables
+
+
 
 
 __________________________________
@@ -417,7 +430,91 @@ How Model Serializers work:
     - update `requirements.txt` in the terminal
         - `pip3 freeze > requirements.txt`
 
+_____________________________________________________________________
 
+## Populating Serializer ReadOnly Field using dot notation
+##### https://youtu.be/e3sJYZ_UyBk
+
+
+- The `source` attribute and its string value explained
+- how to manipulate ReadOnlyFields (using dot notation)
+    - targeting subfields within data models / tables
+
+Entity relationship between the `User` table that comes with Django, and the `Profile` table created in this project:
+
+> The User and Profile tables are connected through the owner OneToOne field.
+
+> By default, the owner field always  returns the user’s id value.
+
+|       US | ER      | < - > |     PRO | FILE     |
+| -------: | :------ | :---: | ------: | :------- |
+|          |         |       | id      | BigAuto  |
+|       id | BigAuto |  -- > | owner   | OneToOne |
+| username | Char    |       | name    | Char     |
+| password | Char    |       | content | Text     |
+|          |         |       | image   | Image    |
+
+> For readability’s sake, however, every time we fetch a profile, it makes sense to overwrite this default behaviour  and retrieve the user’s username instead.  
+
+|        US|ER       | < - > |      PRO|FILE      |
+| -------: | :------ | :---: | ------: | :------- |
+|       id | BigAuto |       | id      | BigAuto  |
+| username | Char    |  -- > | owner   | OneToOne |
+| password | Char    |       | name    | Char     |
+|          |         |       | content | Text     |
+|          |         |       | image   | Image    |
+
+> To access this field, we use dot notation.
+
+**inside serializers.py, in the `ProfileSerializer` class**
+```py
+owner = serializers.ReadOnlyField(
+    source='owner.username'
+)
+```
+> In this case, the “owner” in “owner.username”  stands for the user instance, so any time we want to access a field we simply use dot notation.  
+
+basically `owner` can act as a direct call to that specific user, and using dot notation from `owner` would be the same as `User.AWAYTOIDENTIFYASPECIFICUSER.WHATEVERFIELD`
+
+Now, lets add a 3rd table for `posts`
+
+|        US|ER       | < - > |       PO|ST           | < - > |      PRO|FILE      |
+| -------: | :------ | :---: | ------: | :---------- | :---: | ------: | :------- |
+|       id | BigAuto |       |      id | BigAuto     |       | id      | BigAuto  |
+| username | Char    | < - > |   owner | Foreign Key | < - > | owner   | OneToOne |
+| password | Char    |       |   title | Char        |       | name    | Char     |
+|          |         |       | content | Text        |       | content | Text     |
+|          |         |       |   image | Image       |       | image   | Image    |
+
+> Let’s assume we are working  on PostSerializer instead of ProfileSerializer like we did in the previous video.
+
+In these tables, `Post.owner` is a `ForeignKey` field, this means if the there was a serializer serializing information from `Post`, the name of a user could be found by dot notation, by going through `owner`(which is targeting the user through it being na instance) then `Profile`, so the dot notation would be `owner.Profile.name`.
+
+```py
+class PostSerializer(serializers.ModelSerializer):
+    profile_image = serializers.ReadOnlyField(
+        source='owner.profile.name'
+    )
+```
+
+> One last challenge. Let’s say we wanted to  add the profile image field to each post.
+
+|        US|ER       | < - > |       PO|ST           | < - > |      PRO|FILE      | subfields |
+| -------: | :------ | :---: | ------: | :---------- | :---: | ------: | :------- | :-------: |
+|       id | BigAuto |       |      id | BigAuto     |       | id      | BigAuto  |           |
+| username | Char    | < - > |   owner | Foreign Key | < - > | owner   | OneToOne |           |
+| password | Char    |       |   title | Char        |       | name    | Char     |           |
+|          |         |       | content | Text        |       | content | Text     |           |
+|          |         |       |   image | Image       |       | image   | Image    | url       |
+
+Because the `profile.image` field comtains a "subfield" housing the `url` for the image, that needs to be targeted directly in the dot notation.
+
+```py
+class PostSerializer(serializers.ModelSerializer):
+    profile_image = serializers.ReadOnlyField(
+        source='owner.profile.image.url'
+    )
+```
 
 
 
