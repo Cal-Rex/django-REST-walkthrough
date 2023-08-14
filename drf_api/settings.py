@@ -32,7 +32,7 @@ SECRET_KEY = 'django-insecure-qe)8or2$xpb$67-&&5(m*fq5wr_$it%=%h2v!$@#7u-71^wt5@
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['8000-calrex-djangorestwalkth-0one547gkki.ws-eu102.gitpod.io']
+ALLOWED_HOSTS = ['8000-calrex-djangorestwalkth-0one547gkki.ws-eu103.gitpod.io']
 
 
 # Application definition
