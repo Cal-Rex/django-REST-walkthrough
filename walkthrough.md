@@ -53,6 +53,18 @@ _________________________________
     - add an extra field to an existing serailizer
         - [adding custom fields depending on the authentication of the user using a serializer](#adding-custom-fields-depending-on-the-authentication-of-the-user-using-a-serializer)
 
+-----------------------------
+
+#### lesson 3: The Post Resource
+7. [creating the Post app, its base model and serializer]()
+    - Challenge, no video
+    - creating a serializer
+    - Creating a post model
+    - Cretaing a new App
+8. [Adding Image Filters](#adding-image-filters)
+    - modify a serializer to add filters to uploaded images
+
+
 
 
 __________________________________
@@ -918,7 +930,237 @@ class ProfileSerializer(serializers.ModelSerializer):
 
 __________________________________________________________
 
+## Setting up the Post App resources
+#### Challenge
+
+### Cretaing a new App
+run the command in the terminal to make a new app, name it `posts`
+    - `python3 manage.py startapp posts`
+
+### Creating a post model
+1. in `posts/models.py` import the following:
+    - `models` from `django.db`
+    - `User` from `django.contrib.auth.models`
+    ```py
+    from django.db import models
+    from django.contrib.auth.models import User
+    ```
+
+2. create a class called `Post`, it should inherit from `models.Model`
+3. the new `Post` class needs the following fields:
+    - owner, which should be a `ForeignKey` using the `User` as its value, it should also `CASCADE` delete any related sub-items if deleted
+    - created_at, which should be a `DateTimeField` which should be automatically assigned a new value upon record creation by using the parameter `auto_now_add=True`
+    - updated_at, same as above, except its paramater is `auto_now=True`, not `auto_add_now` as it updates every time the post is edited, not when it is `add`ed
+    - title, should be a `CharField` with a `max_length`
+    - content, should be a `TextField` to house post content, it should be `blank` initially
+    - image, which should be an `ImageField`. 
+        - upon a successful upload, the image should be `upload`ed`_to` `'images/'` 
+        - it should also have a default value from the cloudinary database using a static filepath
+        - it should also be `blank` on the form
+4. add a `Meta` class that orders posts by the `DateTime` they were `created_at`, with the most recent entry being first
+5. define a dunder `str` methos that returns a python `f` string that contains the `id` and `title` of each post through the use of `this`
+
+the post model should look like this:
+```py
+from django.db import models
+from django.contrib.auth.models import User
 
 
+class Post(models.Model):
+    """
+    Post model, related to 'owner', i.e. a User instance.
+    Default image set so that we can always reference image.url.
+    """
+    owner = models.ForeignKey(User, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    title = models.CharField(max_length=255)
+    content = models.TextField(blank=True)
+    image = models.ImageField(
+        upload_to='images/', default='../samples/landscapes/girl-urban-view', blank=True
+    )
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.id} {self.title}'
+```
+
+6. Migrate the completed model into the database
+    1. `python3 manage.py makemigrations`
+    2. `python3 manage.py migrate`
 
 
+### creating a serializer
+
+1. create a new file in `posts` called `serializers.py`
+2. inside the new `serailizers` import:
+    - `serializers` from `rest_framework`
+    - the `Post` model from `.models`
+3. create a class called `PostSerializer` which inherits from `serializers.ModelSerializer`
+4. establish the following serailizer fields:
+    - owner: a `ReadOnlyField` that's `source` is the `username` of the `owner` specified in the `Post` model
+    - profile_id: a `ReadOnlyField` that's `source` is the `id` of the `owner` specified in the `Post` model (`id`'s are automatically created by django)
+    - profile_image: a `ReadOnlyField` that's `source` is the `url` of the `image` field beonging to the `owner`, specified in the `Post` model
+    - is_owner: a variable which houses the `SerializerMethodField` for the `serializer`
+5. use the `is_owner` field to create a method (prefix it with `get_`) with the following parameters: `self` and `obj` for object in question
+    - the function should then take a `context`ual `request` from whatever calls it (`this`), and then checks if the `user` that made the `request` matches the `obj`'s `owner`, `return`ing a voolean value depending on the outcome
+6. add a `Meta` class that:
+    - determines the `model` the serializer its basing its structure from, n this case it is `Post`
+    - determine the `fields` it serializes and displays in a list variable as strings, they should be:
+        - id
+        - owner
+        - created_at
+        - updated_at
+        - title
+        - content
+        - image
+
+finished serializer shuold look like this:
+```py
+from rest_framework import serializers
+from .models import Post
+
+class PostSerializer(serializers.ModelSerializer):
+    owner = serializers.ReadOnlyField(source='owner.username')
+    profile_id = serializers.ReadOnlyField(source='owner.id')
+    profile_image = serializers.ReadOnlyField(source='owner.image.url')
+    is_owner = serializers.SerializerMethodField()
+        # this variable above is used to house 
+        # the requisite serializer it is called 
+        # as a function below by prefixing the variable's 
+        # name with 'get_'
+    
+    def get_is_owner(self, obj):
+        """
+        passes the request of a user into the serializer
+        from views.py
+        to check if the user is the owner of a record
+        """
+        request = self.context['request']
+        return request.user == obj.owner
+
+    class Meta:
+        model = Post
+        fields = [
+            'id',
+            'owner',
+            'created_at',
+            'updated_at',
+            'title',
+            'content',
+            'image',
+        ]
+```
+
+_____________________________________________
+
+## Adding image filters
+#### https://youtu.be/atHYnt2LLO4
+
+this section covers:
+1. Adding an image_filter field to the Post model
+    - > add an  extra field to our Post model, called image_filter, to store the name of the filter to be applied to an image. 
+2. validating post image
+    - size
+    - width
+    - height
+    - > add a mechanism to  validate user uploaded images. Our API will reject them if the image’s size, width, or height exceeds the limit we set.
+
+            It is always a good idea to  have such checks in place.  
+            It will help us to keep the network latency down, 
+            make it easier for our  server to process the images, 
+            stay within image hosting (cloudinary) platform’s free tier plan, 
+            and display images properly  both in a web and mobile app. 
+
+### 1. adding an image_filter
+1. go to `posts/models.py`
+2. > let’s go to our Post model. Inside the Post class, we’ll have to define the list of available choices for the image_filter character field.  
+    - the following field was supplied by the tutorial, listing some stock filters in django:
+        ```py
+        image_filter_choices = [
+            ('_1977', '1977'), ('brannan', 'Brannan'),
+            ('earlybird', 'Earlybird'), ('hudson', 'Hudson'),
+            ('inkwell', 'Inkwell'), ('lofi', 'Lo-Fi'),
+            ('kelvin', 'Kelvin'), ('normal', 'Normal'),
+            ('nashville', 'Nashville'), ('rise', 'Rise'),
+            ('toaster', 'Toaster'), ('valencia', 'Valencia'),
+            ('walden', 'Walden'), ('xpro2', 'X-pro II')
+        ]
+        ```
+    - add this as a variable above the established fields (directly below the class declaration)
+    - > As you can see, the list consists of a series of  tuples. The first value is the actual string saved in the database and the second one is the value displayed in the dropdown menu in the in-browser interface.
+3. create a new `image_filter` field using a `CharField` with `max_length` of `32` and a `choices` parameter consisting of the `image_filter_choices` variable prviously established above the fields variables. it should also have a `default`parameter of `'normal'`
+
+```py
+from django.db import models
+from django.contrib.auth.models import User
+
+
+class Post(models.Model):
+    """
+    Post model, related to 'owner', i.e. a User instance.
+    Default image set so that we can always reference image.url.
+    """
+    image_filter_choices = [
+        ('_1977', '1977'), ('brannan', 'Brannan'),
+        ('earlybird', 'Earlybird'), ('hudson', 'Hudson'),
+        ('inkwell', 'Inkwell'), ('lofi', 'Lo-Fi'),
+        ('kelvin', 'Kelvin'), ('normal', 'Normal'),
+        ('nashville', 'Nashville'), ('rise', 'Rise'),
+        ('toaster', 'Toaster'), ('valencia', 'Valencia'),
+        ('walden', 'Walden'), ('xpro2', 'X-pro II')
+    ]
+    owner = models.ForeignKey(User, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    title = models.CharField(max_length=255)
+    content = models.TextField(blank=True)
+    image = models.ImageField(
+        upload_to='images/',
+        default='../samples/landscapes/girl-urban-view',
+        blank=True
+    )
+    image_filter = models.CharField(
+        max_length=32,
+        choices=image_filter_choices,
+        default='normal'
+        )
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.id} {self.title}'
+```
+
+4. migrate the updated model:
+    1. `python3 manage.py makemigrations`
+    2. `python3 manage.py migrate`
+
+
+5. > and add the newly created image_filter field to our serializer fields.
+    - go to `posts/serializers.py`
+    - add `'image_filter'` to the `fields` list variable in the `PostSerializer`'s `Meta` class
+
+
+### Validating post Image
+> For that, we’ll use the rest framework’s field level validation methods. They’re called: `validate_<fieldName>`  
+
+1.  go to `posts/serializers.py`
+2. create a function using the `validate_` prefix:
+    - > In our case the field name is ‘image’, so our method’s name will be `validate_image`.
+    - pass it 2 arguments:
+        - `self`, which is the instance
+        - `value`, which is the uploaded image
+        - make it `return` the `value` parameter
+    - > **If we follow this naming convention, this method will be called automatically and validate the uploaded image every time we create or update a post.**
+3. inside the function, add an `if` statement that:
+    - if the `size` of `value` is greater than `1024 * 1024 * 2`, `raise` a `ValidationError` from `serializers` that passes a statement of:
+        - `'Image size larger than 2MB!'`
+        - > file size unit is a byte. If we multiply it by 1024, we’ll get kilobytes. Multiplied again by 1024, we’ll get megabytes. Now all we have to do is multiply it by two and we’ll get the 2 megabyte file size limit.
+4. add another `if` statement that checks the `width` `value` of the `image` that `raise`s another `ValidationError` that passes the statement:
+    - `'Image larger than 4096px'`
+5. repeat the process above for the `height` `value` of the `image`
+6. 
