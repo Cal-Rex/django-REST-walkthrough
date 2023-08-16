@@ -56,7 +56,7 @@ _________________________________
 -----------------------------
 
 #### lesson 3: The Post Resource
-7. [creating the Post app, its base model and serializer]()
+7. [creating the Post app, its base model and serializer](#setting-up-the-post-app-resources)
     - Challenge, no video
     - creating a serializer
     - Creating a post model
@@ -85,12 +85,27 @@ _________________________________
         - list all posts
         - unauthenticated cant create posts
         - only authenticated users can create posts
+12. [Post Detail tests](#post-detail-tests)
+    - Walkthrough: https://youtu.be/Epg16CCQHlQ
+    - test examples | make sure users can:
+        - User can retrieve a post with a valid id
+        - User can't retrieve a post with an invalid id (404)
+        - Users can update the posts that they own
 
-
-
-
-
-
+---------------------------------
+#### lesson 4: Comments resource
+13. [creating the Post app, its base model and serializer](#setting-up-the-post-app-resources)
+    - Challenge, no video
+    - Cretaing a new App
+    - Creating the comments model
+    - creating the comment serializer
+14. [Creating a serializer that inherits from another](#creating-the-commentdetailserializer)
+    - Challenge, no video
+15. [Writing views using generics](#commentlist-and-commentdetail-generic-views)
+    - Walkthrough: https://youtu.be/Xw6qDGQSbqs
+    - how to write `CommentList` and `Detail` views using generics.
+    
+    
 
 __________________________________
 
@@ -1754,17 +1769,17 @@ test should look like:
 
 and should return the following in the terminal:
 
-```
-Creating test database for alias 'default'...
-System check identified no issues (0 silenced).
-1
-..
-----------------------------------------------------------------------
-Ran 2 tests in 0.248s
+    ```
+    Creating test database for alias 'default'...
+    System check identified no issues (0 silenced).
+    1
+    ..
+    ----------------------------------------------------------------------
+    Ran 2 tests in 0.248s
 
-OK
-Destroying test database for alias 'default'...
-```
+    OK
+    Destroying test database for alias 'default'...
+    ```
 
 ### Unauthentcated Users can't create posts
 
@@ -1772,9 +1787,274 @@ this test works the same as the one above, except it doesnt need to pass in a lo
 
 it goes through the exact same prcess, except it asserts that the statuscode from the response should be a 403, not a 201
 
-```py
-def test_user_not_logged_in_cant_create_post(self):
-        response = self.client.post('/posts/', {'title': 'a title'})
+    ```py
+    def test_user_not_logged_in_cant_create_post(self):
+            response = self.client.post('/posts/', {'title': 'a title'})
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+    ```
+
+_______________________________________________________________
+
+## Post Detail Tests
+##### https://youtu.be/Epg16CCQHlQ
+
+- test examples | make sure users can:
+    - User can retrieve a post with a valid id
+    - User can't retrieve a post with an invalid id (404)
+    - Users can update the posts that they own
+    
+### User can retrieve a post with a valid id
+
+1. go to `posts/tests.py`
+2. create a `PostDetailViewTests` class that inherits from the prreviously imported `APITestCase`
+3. inside the new class, `def`ine a new `setUp` function with the argument of `self`
+4. create 2 new users inside the function:
+    - `adam`
+    - `anna`
+    - `<username> = User.object.create_user(username='<username>' password='<password>')`
+5. then create a post owned by each user inside the function
+    - `Post.objects.create(owner='<username>', title='<atitle>', content='<username>'s post')`
+
+    ```py
+    class PostDetailViewTests(APITestCase):
+    def setUp(self):
+        adam = User.objects.create_user(username='adam', password='pass1')
+        anna = User.objects.create_user(username='anna', password='pass2')
+        Post.objects.create(owner=adam, title='ADAM!', content="Adam's post")
+        Post.objects.create(owner=anna, title='ANNA!', content="Anna's post")
+    ```
+
+6. with `setUp` now complete, `def` a new function in `PostDetailViewTests` called `test_can_retrieve_post_using_valid_id` with `self` as the argument
+7. inside this function, `get` post `1` from `/posts/` in the instance (`this`) of the `client` and house it in a variable called `response`
+8. then, `assert` wether the `response.data`'s `'title` is `Equal` to `'ADAM!'` 
+9. then, use the same process to check if the `response.status_code` is correct (`status.HTTP_200_OK`)
+
+    ```py
+    def test_can_retrieve_post_using_valid_id(self):
+        response = self.client.get('/posts/1/')
+        self.assertEqual(response.data['title'], 'ADAM!')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+    ```
+
+### User can't retrieve a post with an invalid id (404)
+
+1. inside `PostDetailViewTests`, take the `test_can_retrieve_post_using_valid_id` function and copy/paste it underneath itself
+2. amend its name to `test_cant_retrieve_post_using_invalid_id`
+3. remove the line of code that checks the title of a post
+4. in the `response`, change the post id in the `get` request from `1` to a ridiculous number
+5. in the remaining `assertEqual` statement, change the expected status code to `HTTP_404_NOT_FOUND`
+
+    ```py
+    def test_cant_retrieve_post_using_invalid_id(self):
+        response = self.client.get('/posts/999999/')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+    ```
+
+### Users can update the posts that they own
+
+1. in the `PostDetailViewTests` class `def`ine function at the bottom of the class called `test_user_can_update_own_post`, pass it the `self` argument
+2. make the instanced `client` `login` with `adam`'s credentials
+3. create a `response` from the `client`, which should be a `put` request to `/posts/1/`, updating the posts title via way of `{'K':'V'}`P
+4. create a `post` variable that `filter`s for the `Post` `object` that was just updated. append it with `.first()` so that it returns the first/only 1 result
+5. `assertEqual` on `self` checking that the `title` of `post` is the same as the new title supplied in the `{'K':'V'}`P in step **3**.
+6. then, use the same process to check if the `response.status_code` is correct (`status.HTTP_200_OK`)
+
+    ```py
+    def test_user_can_update_own_post(self):
+        self.client.login(username='adam', password='pass1')
+        response = self.client.put('/posts/1/', {'title': 'ADAAAAAM!'})
+        post = Post.objects.filter(pk=1).first()
+        self.assertEqual(post.title, 'ADAAAAAM!')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+    ```
+
+7. conversely, make sure that users **can't** update posts that they **don't** own. copy the last function and amend its name to:
+    - `test_user_cant_update_others_post`
+8. in `response`, change the id the `put` request is trying to update from `1` to `2`
+9. remove the lines of code for the `post` variable and the `assertEqual` command that checks the post title
+10. update the remaining `assertEqual` to assert that the status code should be `status.HTTP_403_FORBIDDEN`
+
+    ```py
+    def test_user_cant_update_others_post(self):
+        self.client.login(username='adam', password='pass1')
+        response = self.client.put('/posts/2/', {'title': 'ADAAAAAM!'})
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+    ```
+    Finished Test code:
+    ```py
+    class PostDetailViewTests(APITestCase):
+        def setUp(self):
+            adam = User.objects.create_user(username='adam', password='pass1')
+            anna = User.objects.create_user(username='anna', password='pass2')
+            Post.objects.create(owner=adam, title='ADAM!', content="Adam's post")
+            Post.objects.create(owner=anna, title='ANNA!', content="Anna's post")
+
+        def test_can_retrieve_post_using_valid_id(self):
+            response = self.client.get('/posts/1/')
+            self.assertEqual(response.data['title'], 'ADAM!')
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        def test_cant_retrieve_post_using_invalid_id(self):
+            response = self.client.get('/posts/999999/')
+            self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        
+        def test_user_can_update_own_post(self):
+            self.client.login(username='adam', password='pass1')
+            response = self.client.put('/posts/1/', {'title': 'ADAAAAAM!'})
+            post = Post.objects.filter(pk=1).first()
+            self.assertEqual(post.title, 'ADAAAAAM!')
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        def test_user_cant_update_others_post(self):
+            self.client.login(username='adam', password='pass1')
+            response = self.client.put('/posts/2/', {'title': 'ADAAAAAM!'})
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+    ```
+___________________________________________________________________________
+
+## Setting up the Comments App resources
+##### [challenge page](https://learn.codeinstitute.net/courses/course-v1:CodeInstitute+DRF+2021_T1/courseware/601b5665c57540519a2335bfbcb46d93/10d957d204794dbf9a4410792a58f8eb/?child=first)
+
+1. run the command in the terminal to make a new app, name it `comments`
+    - `python3 manage.py startapp comments`
+2. add it to `INSTALLED_APPS` in settings.py
+
+### Creating a comments model
+1. in `comments/models.py` import the following:
+    - `models` from `django.db`
+    - `User` from `django.contrib.auth.models`
+    - `Post` from `posts.models`
+    ```py
+    from django.db import models
+    from django.contrib.auth.models import User
+    from posts.models import Post
+    ```
+
+2. create a class called `Comment`, it should inherit from `models.Model`
+3. the new `Comment` class needs the following fields:
+    - owner, which should be a `ForeignKey` using the `User` as its value, it should also `CASCADE` delete any related sub-items if deleted
+    - post, which should be a `ForeignKey` using the `Post` as its value, it should also `CASCADE` delete any related sub-items if deleted
+    - created_at, which should be a `DateTimeField` which should be automatically assigned a new value upon record creation by using the parameter `auto_now_add=True`
+    - updated_at, same as above, except its paramater is `auto_now=True`, not `auto_add_now` as it updates every time the post is edited, not when it is `add`ed
+    - content, should be a `TextField` to house post content
+   
+4. add a `Meta` class that orders posts by the `DateTime` they were `created_at`, with the most recent entry being first
+5. define a dunder `str` method that returns the `content` of `self`
+
+the post model should look like this:
+```py
+from django.db import models
+from django.contrib.auth.models import User
+from posts.models import Post
+
+
+class Comment(models.Model):
+    """
+    Comment model, related to User and Post
+    """
+    owner = models.ForeignKey(User, on_delete=models.CASCADE)
+    post = models.ForeignKey(Post, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    content = models.TextField()
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.content
 ```
+
+6. Migrate the completed model into the database
+    1. `python3 manage.py makemigrations`
+    2. `python3 manage.py migrate`
+
+
+### creating the comment serializer
+
+1. create a new file in `comments` called `serializers.py`
+2. inside the new `serailizers` import:
+    - `serializers` from `rest_framework`
+    - the `Comment` model from `.models`
+3. create a class called `CommentSerializer` which inherits from `serializers.ModelSerializer`
+4. establish the following serailizer fields:
+    - owner: a `ReadOnlyField` that's `source` is the `username` of the `owner` specified in the `Comment` model
+    - profile_id: a `ReadOnlyField` that's `source` is the `id` of the `owner` specified in the `Comment` model (`id`'s are automatically created by django)
+    - profile_image: a `ReadOnlyField` that's `source` is the `url` of the `image` field beonging to the `owner`, specified in the `Comment` model
+    - is_owner: a variable which houses the `SerializerMethodField` for the `serializer`
+5. use the `is_owner` field to create a method (prefix it with `get_`) with the following parameters: `self` and `obj` for object in question
+    - the function should then take a `context`ual `request` from whatever calls it (`this`), and then checks if the `user` that made the `request` matches the `obj`'s `owner`, `return`ing a boolean value depending on the outcome
+6. add a `Meta` class that:
+    - determines the `model` the serializer its basing its structure from, n this case it is `Comment`
+    - determine the `fields` it serializes and displays in a list variable as strings, they should be:
+        - id
+        - owner
+        - profile_id
+        - profile_image
+        - post
+        - created_at
+        - updated_at
+        - content
+        - is_owner
+
+finished serializer shuold look like this:
+```py
+from rest_framework import serializers
+from .models import Comment
+
+class CommentSerializer(serializers.ModelSerializer):
+    owner = serializers.ReadOnlyField(source='owner.username')
+    profile_id = serializers.ReadOnlyField(source='owner.id')
+    profile_image = serializers.ReadOnlyField(source='owner.image.url')
+    is_owner = serializers.SerializerMethodField()
+        # this variable above is used to house 
+        # the requisite serializer it is called 
+        # as a function below by prefixing the variable's 
+        # name with 'get_'
+    
+    def get_is_owner(self, obj):
+        """
+        passes the request of a user into the serializer
+        from views.py
+        to check if the user is the owner of a record
+        """
+        request = self.context['request']
+        return request.user == obj.owner
+
+    class Meta:
+        model = Comment
+        fields = [
+            'id',
+            'owner',
+            'profile_id',
+            'profile_image',
+            'created_at',
+            'updated_at',
+            'post',
+            'content',
+            'is_owner',
+        ]
+```
+
+___________________________________________________________
+
+## Creating the CommentDetailSerializer
+#### Creating a Serializer that inherits from another
+
+1. in `comments/serializers.py`, create a new class called `CommentDetailSerializer`. make it inherit from the previously created `CommentSerializer` class
+2. give it a variable of `post`: a `ReadOnlyField` that's `source` is the `id` of the `post` specified in the `Comment` model
+
+```py
+class CommentDetailSerializer(CommentSerializer):
+    post = serializers.ReadOnlyField(source='post.id')
+```
+> Because CommentDetailSerializer inherits from CommentSerializer, all its methods and attributes are already included e.g. Meta.
+
+___________________________________________________________
+
+## CommentList and CommentDetail generic views
+##### https://youtu.be/Xw6qDGQSbqs
+
+how to write `CommentList` and `Detail` views using generics.
+
 
