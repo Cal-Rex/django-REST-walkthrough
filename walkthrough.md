@@ -75,6 +75,17 @@ _________________________________
     - update a record by id
     - delete a record by id
 
+-------------------------------
+#### lesson 3.5: tests
+11. [Writing Tests | Post List Tests](#writing-tests--post-list-tests)
+    - Walkthrough: https://youtu.be/Vdga_GUb6q0
+    - How tests work | lifecycle of a test
+    - how to write tests
+    - test examples | make sure users can:
+        - list all posts
+        - unauthenticated cant create posts
+        - only authenticated users can create posts
+
 
 
 
@@ -1599,5 +1610,171 @@ class PostDetail(APIView):
         return Response(
             status=status.HTTP_204_NO_CONTENT
         )
+```
+
+__________________________________________________________
+
+## Writing Tests | Post List Tests
+##### https://youtu.be/Vdga_GUb6q0
+
+- how tests work | test lifecycle
+- how to write tests
+- test examples | make sure users can:
+    - list all posts
+    - unauthenticated cant create posts
+    - only authenticated users can create posts
+
+> In the next two videos, you’ll learn how to test both views using the red-green-refactor process, where we first make sure the test fails and then we write the code to make it pass.
+
+### How tests work
+> Let’s have a look at what happens when we run the test command. At the very beginning, before any test is run, the test database is created.  
+> Then, before every test, the test database is flushed, which means that any data in it is destroyed.  
+> Then, the setUp method runs, and finally the test. The cycle repeats for each test method.
+> Eventually, at the very end, once all of the tests have been run, the test database is destroyed.
+
+1. got to `posts/tests.py`
+2. import the `User` and `Post` models:
+    - `from django.contrib.auth.models import User`
+    - `from .models import Post`
+3. import `status` from `rest_framework`
+4. import `APITestCase` from `rest_framework.test`
+    -   ```py
+        from django.contrib.auth.models import User
+        from .models import Post
+        from rest_framework import status
+        from rest_framework.test import APITestCase
+        ```
+5. create a class called `PostListViewTests` that inherits from `APITestCase`
+6. > First, we’ll define the setUp method that will automatically run before every test method in the class:
+    - `def`ine a `setUp` method that takes `self` as a parameter
+    - inside the method, `create_` a new `user` `object` in the `User` table, giving it the following parameters:
+        - `username='adam'`
+        - `password='pass'`
+        - `User.objects.create_user(username='adam', password='pass')`
+        - > We’ll use this user’s credentials when we need to log in to create a post. We’ll also need this user when we manually create a post and need to set its owner.
+7. > Now, let’s test that we can list posts present in the database:
+    - `def`ine a method called `test_can_list_posts` with `self` as an argument
+    - define the test user in a variable called `adam` by setting its value to `User.objects.get(username='adam')`
+    - `create` a new `Post` `object` with the following parameters:
+        - `owner=adam`
+        - `title='test post title`
+        - it should look like: `Post.objects.create(owner=adam, title='a title')`
+    - make a variable called `response`, its value should be:
+        - `response = self.client.get('/posts/')`
+        - > What I want to test now, is that I can make a  get request to ‘/posts’ to list all the posts. You make test network requests by calling an appropriate method on self-dot-client, namely self.client.get or .post, .put, and so on, followed by the url we’re making the request to.
+    - start by testing that the test works by `assert`ing an incorrect `status` code of `HTTP_201_CREATED` (should be 200)
+        - `self.assertEqual(response.status_code, status.HTTP_201_CREATED)`
+
+    ```py
+    from django.test import TestCase
+    from django.contrib.auth.models import User
+    from .models import Post
+    from rest_framework import status
+    from rest_framework.test import APITestCase
+
+
+    class PostListViewTests(APITestCase):
+        def setUp(self):
+            User.objects.create_user(username='adam', password='pass')
+        
+        def test_can_list_posts(self):
+            adam = User.objects.get(username='adam')
+            Post.objects.create(owner=adam, title='a title')
+            response = self.client.get('/posts/')
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+    ```
+8. Run the test in the temrinal using the command:
+    - `python3 manage.py test`
+    - the following information should be returned in the terminal:
+        ```
+        Creating test database for alias 'default'...
+        System check identified no issues (0 silenced).
+        F
+        ======================================================================
+        FAIL: test_can_list_posts (posts.tests.PostListViewTests.test_can_list_posts)
+        ----------------------------------------------------------------------
+        Traceback (most recent call last):
+        File "/workspace/django-REST-walkthrough/posts/tests.py", line 16, in test_can_list_posts
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        AssertionError: 200 != 201
+
+        ----------------------------------------------------------------------
+        Ran 1 test in 0.089s
+
+        FAILED (failures=1)
+        Destroying test database for alias 'default'...
+        ```
+9. > let's adjust it to `200_OK`, `print(response.data)` and its `length`. We’ll see the API is responding with a single post, the one we just created:
+    - amended test:
+        ```py
+        def test_can_list_posts(self):
+            adam = User.objects.get(username='adam')
+            Post.objects.create(owner=adam, title='a title')
+            response = self.client.get('/posts/')
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            print(response.data)
+            print(len(response.data))
+        ```
+    - running the test again, the terminal should return this:
+        ```
+        Creating test database for alias 'default'...
+        System check identified no issues (0 silenced).
+        [OrderedDict([('id', 1), ('owner', 'adam'), ('profile_id', 1), ('created_at', '2023-08-16T08:32:12.759797Z'), ('updated_at', '2023-08-16T08:32:12.759811Z'), ('title', 'a title'), ('content', ''), ('image', 'https://res.cloudinary.com/deth0ifla/image/upload/v1/media/../samples/landscapes/girl-urban-view'), ('image_filter', 'normal'), ('is_owner', False)])]
+        1
+        .
+        ----------------------------------------------------------------------
+        Ran 1 test in 0.083s
+
+        OK
+        Destroying test database for alias 'default'...
+        ```
+
+### only authenticated users can create posts
+> Let’s now make sure that a logged in user can create a post. To test protected routes (which are routes  that require the user to be logged in), we’ll have to log in first using the APITest client.
+
+1. `def`ine a new method called `test_logged_in_user_can_create_post` that takes a `self` argument
+2. inside the new method, use the `self.client` method to `login`, using the username and password defined in the `setUp` method
+3. create a `response` variable, its value should be a call to `self.client` to `post` an object to `/posts/`, the value of the post being a KVP of `{'title': 'a title'}`
+4. create a `count` variable that `count()`s the amount of `objects` in the `Post` table
+5. check to see if the number of posts `count`ed is equal to `1` by using the `assertEqual` method on the instance (`this`)
+6. use the `assertEqual` method to also check the `response`'s `status_code` and make sure it matches `status.HTTP_200_OK`
+    - this will force the test to fail due tot he status code not being correct.
+    - to make is work, change the status code to `HTTP_201_CREATED`
+
+test should look like:
+
+    ```py
+    def test_logged_in_user_can_create_post(self):  # 1
+        self.client.login(username='adam', password='pass')  # 2
+        response = self.client.post('/posts/', {'title': 'a title'})  # 3
+        count = Post.objects.count()  # 4
+        self.assertEqual(count, 1)  # 5
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)  # 6
+    ```
+
+and should return the following in the terminal:
+
+```
+Creating test database for alias 'default'...
+System check identified no issues (0 silenced).
+1
+..
+----------------------------------------------------------------------
+Ran 2 tests in 0.248s
+
+OK
+Destroying test database for alias 'default'...
+```
+
+### Unauthentcated Users can't create posts
+
+this test works the same as the one above, except it doesnt need to pass in a login, it just needs a `response` to check:
+
+it goes through the exact same prcess, except it asserts that the statuscode from the response should be a 403, not a 201
+
+```py
+def test_user_not_logged_in_cant_create_post(self):
+        response = self.client.post('/posts/', {'title': 'a title'})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 ```
 
