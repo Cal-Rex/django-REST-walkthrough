@@ -107,6 +107,14 @@ _________________________________
     - [docs: more info on generics](#more-info-on-generics)
     - [docs: more info on filtering](#more-info-on-filtering)
 
+---------------------------------
+#### leson 5: likes resource
+16. [creating the Like app, its base model and serializer]()
+    - Challenge, no video
+    - Creating a new App
+    - Creating the Like model
+    - creating the Like serializer
+
     
 
 __________________________________
@@ -2201,3 +2209,63 @@ urlpatterns = [
     path('comments/<int:pk>', views.CommentDetail.as_view()),  # step 17
 ]
 ```
+_______________________________________________________________________
+## setting up the like app
+##### [challenge page](https://learn.codeinstitute.net/courses/course-v1:CodeInstitute+DRF+2021_T1/courseware/601b5665c57540519a2335bfbcb46d93/241dbe57cd2a466dba5f7d37f67e2cb8/?child=first)
+##### Challenge, no video
+
+- Creating a new App
+- Creating the Like model
+- creating the Like serializer
+
+
+### Creating the app
+
+1. run the command in the terminal to make a new app, name it `likes`
+    - `python3 manage.py startapp likes`
+2. add it to `INSTALLED_APPS` in settings.py
+
+
+### Creating the Like Model
+
+3. go to `likes/models.py`
+4. add all of the following imports:
+    ```py
+    from django.db import models
+    from django.db.models import UniqueConstraint
+    from django.contrib.auth.models import User
+    from posts.models import Post
+    from comments.models import Comment
+    ```
+5. create the `Like` class, that inherits from `models.model`
+6. add the following fields to the new class to create the data model:
+    - owner: should be a ForeignKey linked to the `User` table, with an `on_delete` property of CASCADE
+    - post: should be a ForeignKey with a [`related_name`](https://docs.djangoproject.com/en/3.2/ref/models/fields/#django.db.models.ForeignKey.related_name) of `likes`, with an `on_delete` property of CASCADE
+    - created_at: a DateTimeField which has a paroperty of `auto_now_add=True`
+7. assign the `Like` class a `Meta` class which:
+    - reverse orders items in the table based on the time they were created
+    - ~~add a [`unique_together`](https://docs.djangoproject.com/en/3.2/ref/models/options/#unique-together) field between owner and post~~
+        - `unique_together` will be deprecated in the future, django docs advise the use of `constraints = [UniqueConstraint()]` instead
+        - add a constraints variable that takes a list value containing a `UniqueConstraint` that links the `owner` and `post` to each individual like, making them unique
+            - [link to documentation on how to use constraints](https://docs.djangoproject.com/en/3.2/ref/models/constraints/)
+        > With things like UniqueConstraint, it's not actually making particular changes to the model itself. The code you've written will check the request before it tries to alter the database....so in this case, check if the owner and post ID's are already present together.
+        > Metaclasses are used to provide things like validation, without needing to alter the actual model itself. Generally, it'll be things like setting the name, ordering, unique constraints etc.
+8. add a dunder `str` method to the end of the class that `return`s a string containing the `owner` and `post` fields
+
+
+### Creating the Like serializer
+
+1. create a new file in `likes` called `serializers.py`
+2. inside the new `serailizers` import:
+    - `serializers` from `rest_framework`
+    - the `Like` model from `.models`
+3. create a class called `LikeSerializer` which inherits from `serializers.ModelSerializer`
+4. establish the following serailizer fields:
+    - owner: a `ReadOnlyField` that's `source` is the `username` of the `owner` specified in the `Post` model
+5. add a `Meta` class that:
+    - determines the `model` the serializer its basing its structure from, in this case it is `Like`
+    - determines the `fields` it serializes and displays in a list variable as strings, they should be:
+        - id
+        - owner
+        - created_at
+        - updated_at
