@@ -104,7 +104,9 @@ _________________________________
 15. [Writing views using generics](#commentlist-and-commentdetail-generic-views)
     - Walkthrough: https://youtu.be/Xw6qDGQSbqs
     - how to write `CommentList` and `Detail` views using generics.
-    
+    - [docs: more info on generics](#more-info-on-generics)
+    - [docs: more info on filtering](#more-info-on-filtering)
+
     
 
 __________________________________
@@ -2054,7 +2056,148 @@ ___________________________________________________________
 
 ## CommentList and CommentDetail generic views
 ##### https://youtu.be/Xw6qDGQSbqs
+##### [more info on Generics](https://www.django-rest-framework.org/api-guide/generic-views/#attributes/)
+##### [more info on filtering](https://www.django-rest-framework.org/api-guide/filtering/)
 
 how to write `CommentList` and `Detail` views using generics.
 
+> The Django Documentation states that generic views were developed as a shortcut for common usage patterns. What this means is that we can achieve  all the same functionality of the get, post, put and other class based view methods without having to repeat ourselves so much.
 
+steps:
+1. go to `views.py` in the `comments` app. 
+2. import the following:
+    - `generics` from `rest_framework`
+    - `IsOwnerOrReadOnly` from `permissions` in `drf_api`
+    - `Comment` from `.models`
+    - `CommentSerializer` and `CommentDetailSerializer` from `.serializers`
+
+#### Create the CommentList View
+
+3. create a class called `CommentList` that inherits from `generics.ListCreateAPIView`
+    - > As we want to both [list] and [create] comments in the ListView, instead of explicitly defining the post and get methods like we did before, I’ll extend generics’ [List][Create]APIView. Extending the [List]APIView means we won’t have to write the get method and the [Create]APIView takes care of the post method.
+    - **list** covers the get request
+    - **create** covers the post request
+4. set the `serailizer_class` to `CommentSerializer`
+5. set the `permission_classes` to `[permissions.IsAuthenticatedOrReadOnly]`
+6. Add a queryset variable that `get`s `all()` the `objects` in the `Comment` table
+    - > Instead of specifying only the model we’d like  to use, in DRF we set the queryset attribute. This way, it is possible to filter  out some of the model instances. This would make sense if we were  dealing with user sensitive data like orders or payments where we would need to  make sure users can access and query only their own data. In this case however, we want all the  comments.
+    - [**Learn more about attribute and data filtering here**](https://www.django-rest-framework.org/api-guide/filtering/)
+
+code so far:
+
+    ```py
+    from rest_framework import generics, permissions
+    from drf_api.permissions import IsOwnerOrReadOnly
+    from .models import Comment
+    from .serializers import CommentSerializer, CommentDetailSerializer
+
+    class CommentList(generics.ListCreateAPIView):  # step 3
+        serializer_class = CommentSerializer  # step 4
+        permission_classes = [permissions.IsAuthenticatedOrReadOnly]  # step 5
+        queryset = Comment.objects.all()  # step 6
+    ```
+> Before we test the view, we’ll have to make sure comments are associated with a user upon creation. We do this with generics by defining the perform_create method
+
+7. `def`ine a method called `perform_create` which takes the arguments of `self` and `serializer`
+    - > the `perform_create` method takes in `self` and `serializer` as arguments. Inside, we pass in the user making the request as owner into the serializer’s save method, just like we did in the regular class based views.
+8. call the `save()` command on the `serializer`, in the argument of `save` define the `owner` as the `user` making the `request`
+    - views using generics:
+        ```py 
+        from rest_framework import generics, permissions
+        from drf_api.permissions import IsOwnerOrReadOnly
+        from .models import Comment
+        from .serializers import CommentSerializer, CommentDetailSerializer
+
+        class CommentList(generics.ListCreateAPIView):  # step 3
+            serializer_class = CommentSerializer  # step 4
+            permission_classes = [permissions.IsAuthenticatedOrReadOnly]  # step 5
+            queryset = Comment.objects.all()  # step 6
+
+            def perform_create(self, serializer):  # step 7
+                serializer.save(owner=self.request.user)  #step 8
+        ```
+    - views manually written equivalent:
+        ```py
+        class PostList(APIView):
+            serializer_class = PostSerializer
+            permission_classes = [
+                permissions.IsAuthenticatedOrReadOnly
+            ]
+
+            def get(self, request):
+                posts = Post.objects.all()
+                serializer = PostSerializer(
+                    posts,
+                    many=True,
+                    context={'request': request}
+                )
+                return Response(serializer.data)
+
+            def post(self, request):
+                serializer = PostSerializer(
+                    data=request.data, context={'request': request}
+                )
+                if serializer.is_valid():
+                    serializer.save(owner=request.user)
+                    return Response(serializer.data, status=status.HTTP_201_CREATED)
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        ```
+
+    > More good news is that with generics, the request  is a part of the context object by default. What this means is that we no longer have to pass it manually,  like we did in the regular class based views.
+
+9. now, create the `urls` for the comments. create the `urls.py` file in the `comments app`
+10. import the following into `comments/urls.py`:
+    - `from django.urls import path`
+    - `from comments import views`
+11. next, create the `urlpatterns` list beneath the imports, it should contain the following paths:
+    - `'comments/'` which should take the `CommentList` `view` and render it `as_view()`
+
+```py
+urlpatterns = [
+    path('comments/', views.CommentList.as_view()),
+]
+```
+
+12. then, in `drf_api/views` add the `'comments.urls'` to a `path` by using the `include` method
+    ```py
+    from django.contrib import admin
+    from django.urls import path, include
+
+    urlpatterns = [
+        path('admin/', admin.site.urls),
+        path('api-auth/', include('rest_framework.urls')),
+        path('', include('profiles.urls')),
+        path('', include('posts.urls')),
+        path('', include('comments.urls')),  # step 12
+    ]
+    ```
+
+#### create the CommentDetail view
+
+13. create a class called `CommentDetail` and have it inherit from `generics.RetrieveUpdateDestroyAPIView`
+    - from generics, the following methods are pulled in the inherited model name to automatically streamline the coding for the following types of requests:
+        - `Retrieve` data
+        - `Update` data
+        - `Destroy` data
+        - jump back up [here](#create-the-commentlist-view) for a fuller explanataion
+        - [documentation on generics](https://www.django-rest-framework.org/api-guide/generic-views/#attributes/)
+14. set the `permission_classes` list of the new class to the imported `[IsOwnerReadOrReadOnly]` permission
+15. set the `serializer_class` for the class to `CommentDetailSerializer`
+    - > Our serializer still needs to access the request, but as mentioned before, we don’t really need to do anything, as the request is passed in as part of the context object by default.
+16. define the `queryset` for the class, querying `all()` the `objects` in the `Comment` table
+
+```py
+class CommentDetail(generics.RetrieveUpdateDestroyAPIView):  # step 13
+    permission_classes = [IsOwnerOrReadOnly]  # step 14
+    serializer_class = CommentDetailSerializer  # step 15
+    queryset = Comment.objects.all()  # step 16
+```
+
+17. with the class created, head back to `comments/urls.py` and add a new path to the `urlpatterns` list, this time it should be for `comments/<int:pk>/`, (<int:pk>: the primary key is being told to be handled as an integeter). It should render the `CommentDetail` `view` `as_view()`
+
+```py
+urlpatterns = [
+    path('comments/', views.CommentList.as_view()),
+    path('comments/<int:pk>', views.CommentDetail.as_view()),  # step 17
+]
+```
