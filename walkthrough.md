@@ -114,8 +114,10 @@ _________________________________
     - Creating a new App
     - Creating the Like model
     - creating the Like serializer
-
-    
+17. [Like Serializer Handling Duplicate Likes / Integrity Errors](#like-serializer-handling-duplicate-likes--integrity-errors)
+    - Walkthrough: https://youtu.be/H1by3Yc2aYQ
+    - handling Integrity Errors
+        - caused by posible duplications
 
 __________________________________
 
@@ -2269,3 +2271,52 @@ _______________________________________________________________________
         - owner
         - created_at
         - updated_at
+
+________________________________________________________________________
+
+## Like Serializer Handling Duplicate Likes / Integrity Errors
+##### https://youtu.be/H1by3Yc2aYQ
+
+> In this video, we will learn how to prevent  our users from liking the same post twice.
+
+Because the `Like` model has a `Meta` class that prevents duplicate likes from a single user on a single post, trying like a post more than once will cause an **Integrity Error**. to avoid this, update the serializer with a method that can handle the error in an exception using a `try`/`except` statement. 
+
+1. first, navigate to `serializers.py` in the `likes` app. at the top of the file, import:
+    - `from django.db import IntegrityError`
+
+1. then, Inside the `LikeSerializer` class, after its `Meta` class:
+    - `def`ine a new `create` method that takes the arguments of `self` and `validated_data`
+    - > Handling duplicates  with the rest framework is pretty easy. All we have to do is define the create method inside our LikeSerializer to return a complete object instance  based on the validated data.
+2. add a `try` statement that tries to `return` the following:
+    - `super().create(validated_data)`
+        - > This create method is on the model serializer and for that reason I had to call “super()”.
+3. then add an `except`ion on an `IntegrityError` that:
+    - `raise`s a `ValidationError` from `serializers`, for its paramters, add a {K: V}P of `'detail'`: `'possible duplicate'`
+
+```py
+from django.db import IntegrityError
+from rest_framework import serializers
+from .models import Like
+
+
+class LikeSerializer(serializers.ModelSerializer):
+    owner = serializers.ReadOnlyField(source='owner.username')
+
+    class Meta:
+        model = Like
+        fields = [
+            'id',
+            'owner',
+            'created_at',
+            'post',
+        ]
+
+    def create(self, validated_data):
+        try:
+            return super().create(validated_data)
+        except IntegrityError:
+            raise serializers.ValidationError({
+                'detail': 'possible duplicate'
+            })
+```
+___________________________
