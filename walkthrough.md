@@ -108,8 +108,8 @@ _________________________________
     - [docs: more info on filtering](#more-info-on-filtering)
 
 ---------------------------------
-#### leson 5: likes resource
-16. [creating the Like app, its base model and serializer]()
+#### lesson 5: likes resource
+16. [creating the Like app, its base model and serializer](#creating-the-likes-app)
     - Challenge, no video
     - Creating a new App
     - Creating the Like model
@@ -118,8 +118,28 @@ _________________________________
     - Walkthrough: https://youtu.be/H1by3Yc2aYQ
     - handling Integrity Errors
         - caused by posible duplications
+18. [Create the Likes views using Generic Views](#create-the-likes-views-using-generic-views)
+    - Walkthrough: https://youtu.be/W4_vefxcVzg
+    - create LikeList and LikeDetail views using generics
+----------------------------------
+#### Lesson 6: the Follower Resource
+19. [Followers app and model build challenge](#creating-the-followers-app)
+20. [Followers Serializer challenge](#creating-the-follower-serializer)
+21. [Follower Views challenge](#creating-follower-app-views-using-generics)
 
-__________________________________
+-------------------------------------
+
+#### lesson 6.5: refactoring profile and post apps
+22. [Refactoring challenge](#refactoring-post-and-profile-views)
+
+--------------------------------------
+
+#### Lesson 7: Data Filtering
+23. [Adding Extra Fields to Posts and Profiles Part 1](#adding-extra-fields-to-profiles-and-post-apps)
+    - adding an extra field to the profile serializer to include whether or not a logged in user has followed another user.
+    - adding an extra field to the post serializer to include whether or not a logged in user has liked a post.
+
+______________________________
 
 ## Setting up project with Django & Cloudinary on Github
 ##### https://youtu.be/9BuhX2Tskbk
@@ -2191,7 +2211,7 @@ urlpatterns = [
         - `Destroy` data
         - jump back up [here](#create-the-commentlist-view) for a fuller explanataion
         - [documentation on generics](https://www.django-rest-framework.org/api-guide/generic-views/#attributes/)
-14. set the `permission_classes` list of the new class to the imported `[IsOwnerReadOrReadOnly]` permission
+14. set the `permission_classes` list of the new class to the imported `[IsOwnerOrReadOnly]` permission
 15. set the `serializer_class` for the class to `CommentDetailSerializer`
     - > Our serializer still needs to access the request, but as mentioned before, we don’t really need to do anything, as the request is passed in as part of the context object by default.
 16. define the `queryset` for the class, querying `all()` the `objects` in the `Comment` table
@@ -2221,7 +2241,7 @@ _______________________________________________________________________
 - creating the Like serializer
 
 
-### Creating the app
+### Creating the Likes app
 
 1. run the command in the terminal to make a new app, name it `likes`
     - `python3 manage.py startapp likes`
@@ -2320,3 +2340,523 @@ class LikeSerializer(serializers.ModelSerializer):
             })
 ```
 ___________________________
+
+## Create the Likes views using Generic Views
+##### https://youtu.be/W4_vefxcVzg
+
+> In this video, we will get more practice with generics by creating LikeList and LikeDetail generic views.
+
+steps:
+1. go to `views.py` in the `likes` app. 
+2. import the following:
+    - `generics` from `rest_framework`
+    - `IsOwnerOrReadOnly` from `permissions` in `drf_api`
+    - `Like` from `.models`
+    - `LikeSerializer` from `.serializers`
+
+#### Create the CommentList View
+
+3. create a class called `LikeList` that inherits from `generics.ListCreateAPIView`
+    - > As we want to both [list] and [create] comments in the ListView, instead of explicitly defining the post and get methods like we did before, I’ll extend generics’ [List][Create]APIView. Extending the [List]APIView means we won’t have to write the get method and the [Create]APIView takes care of the post method.
+    - **list** covers the get request
+    - **create** covers the post request
+4. set the `serailizer_class` to `LikeSerializer`
+5. set the `permission_classes` to `[permissions.IsAuthenticatedOrReadOnly]`
+6. Add a queryset variable that `get`s `all()` the `objects` in the `Like` table
+    - > Instead of specifying only the model we’d like  to use, in DRF we set the queryset attribute. This way, it is possible to filter  out some of the model instances. This would make sense if we were  dealing with user sensitive data like orders or payments where we would need to  make sure users can access and query only their own data. In this case however, we want all the  comments.
+    - [**Learn more about attribute and data filtering here**](https://www.django-rest-framework.org/api-guide/filtering/)
+
+code so far:
+
+    ```py
+    from django.shortcuts import render
+    from rest_framework import generics, permissions
+    from drf_api.permissions import IsOwnerOrReadOnly
+    from .models import Like
+    from .serializers import LikeSerializer
+
+
+    class LikeList(generics.ListCreateAPIView):
+        serializer_class = LikeSerializer
+        permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+        queryset = Like.objects.all()
+    ```
+> Before we test the view, we’ll have to make sure comments are associated with a user upon creation. We do this with generics by defining the perform_create method
+
+7. `def`ine a method called `perform_create` which takes the arguments of `self` and `serializer`
+    - > the `perform_create` method takes in `self` and `serializer` as arguments. Inside, we pass in the user making the request as owner into the serializer’s save method, just like we did in the regular class based views.
+8. call the `save()` command on the `serializer`, in the argument of `save` define the `owner` as the `user` making the `request`
+    - views using generics:
+        ```py 
+        from django.shortcuts import render
+        from rest_framework import generics, permissions
+        from drf_api.permissions import IsOwnerOrReadOnly
+        from .models import Like
+        from .serializers import LikeSerializer
+
+
+        class LikeList(generics.ListCreateAPIView):
+            serializer_class = LikeSerializer
+            permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+            queryset = Like.objects.all()
+
+            def perform_create(self, serializer):
+                    serializer.save(owner=self.request.user)
+        ```
+
+    - views manually written equivalent:
+        ```py
+        class PostList(APIView):
+            serializer_class = PostSerializer
+            permission_classes = [
+                permissions.IsAuthenticatedOrReadOnly
+            ]
+
+            def get(self, request):
+                posts = Post.objects.all()
+                serializer = PostSerializer(
+                    posts,
+                    many=True,
+                    context={'request': request}
+                )
+                return Response(serializer.data)
+
+            def post(self, request):
+                serializer = PostSerializer(
+                    data=request.data, context={'request': request}
+                )
+                if serializer.is_valid():
+                    serializer.save(owner=request.user)
+                    return Response(serializer.data, status=status.HTTP_201_CREATED)
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        ```
+
+    > More good news is that with generics, the request is a part of the context object by default. What this means is that we no longer have to pass it manually,  like we did in the regular class based views.
+
+9. now, create the `urls` for the comments. create the `urls.py` file in the `likes` app
+10. import the following into `likes/urls.py`:
+    - `from django.urls import path`
+    - `from likes import views`
+11. next, create the `urlpatterns` list beneath the imports, it should contain the following paths:
+    - `'likes/'` which should take the `LikeList` `view` and render it `as_view()`
+
+```py
+urlpatterns = [
+    path('likes/', views.LikeList.as_view()),
+]
+```
+
+12. then, in `drf_api/views` add the `'likes.urls'` to a `path` by using the `include` method
+    ```py
+    from django.contrib import admin
+    from django.urls import path, include
+
+    urlpatterns = [
+        path('admin/', admin.site.urls),
+        path('api-auth/', include('rest_framework.urls')),
+        path('', include('profiles.urls')),
+        path('', include('posts.urls')),
+        path('', include('comments.urls')),  # step 12
+        path('', include('likes.urls')),  # step 12
+    ]
+    ```
+
+#### create the LikeDetail view
+
+13. in `likes/views.py` create a class called `LikeDetail` and have it inherit from `generics.RetrieveDestroyAPIView`
+    - from generics, the following methods are pulled in the inherited model name to automatically streamline the coding for the following types of requests:
+        - `Retrieve` data
+        - `Destroy` data
+        - > There’s no need to implement like updates, as our users will create a like when clicking the like button and destroy a like when clicking the button again.
+        - jump back up [here](#create-the-commentlist-view) for a fuller explanataion
+        - [documentation on generics](https://www.django-rest-framework.org/api-guide/generic-views/#attributes/)
+14. set the `permission_classes` list of the new class to the imported `[IsOwnerOrReadOnly]` permission
+    - > which will allow only the user who liked a post  to un-like it
+    - [review it here](#creating-a-custom-permission)
+15. set the `serializer_class` for the class to `LikeSerializer`
+    - > Our serializer still needs to access the request, but as mentioned before, we don’t really need to do anything, as the request is passed in as part of the context object by default.
+16. define the `queryset` for the class, querying `all()` the `objects` in the `Like` table
+
+```py
+class LikeDetail(generics.RetrieveDestroyAPIView):  # step 13
+    permission_classes = [IsOwnerOrReadOnly]  # step 14
+    serializer_class = LikeSerializer  # step 15
+    queryset = Like.objects.all()  # step 16
+```
+
+17. with the class created, head back to `likes/urls.py` and add a new path to the `urlpatterns` list, this time it should be for `likes/<int:pk>/`, (<int:pk>: the primary key is being told to be handled as an integeter). It should render the `LikeDetail` `view` `as_view()`
+
+```py
+urlpatterns = [
+    path('likes/', views.LiketList.as_view()),
+    path('likes/<int:pk>/', views.LikeDetail.as_view()),  # step 17
+]
+```
+
+_____________________________________________________________________
+
+## Creating the Followers app
+##### Challenge: https://learn.codeinstitute.net/courses/course-v1:CodeInstitute+DRF+2021_T1/courseware/601b5665c57540519a2335bfbcb46d93/d29d4cc768c944b1b6127f429bc14c97/?child=first
+
+1. create the app using the same methods used to create the other apps
+
+2. create the `Follower` model with the follwoing spec:
+
+Product Spec
+- owner: ForeignKey
+- set on_delete to cascade
+- set related_name to 'following'
+- followed: ForeignKey
+- set on_delete to cascade
+- set related_name to 'followed'
+- created_at: DateTimeField
+- add auto_now_add as True
+
+Additionally:
+
+- Create the Meta class:
+    - add ordering field using reverse created_at.
+    - Add unique_together field between owner and followed
+- Create the __str__ dunder method:
+    - return a string containing the owner and followed fields
+
+
+```py
+from django.db import models
+from django.db.models import UniqueConstraint
+from django.contrib.auth.models import User
+from profiles.models import Profile
+
+# Create your models here.
+
+class Follower(models.Model):
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='following')
+    followed = models.ForeignKey(User, on_delete=models.CASCADE, related_name='followed')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        constraints = [UniqueConstraint(fields=['owner', 'followed'], name='unique_follow')]
+
+    def __str__(self):
+        return f"{self.owner} {self.followed}"
+```
+
+
+
+##### [solution](https://github.com/Code-Institute-Solutions/drf-api/tree/1fff0efe7e9f9abcc0ea1ccea534742458e5dc01)
+
+____________________________________________________________________
+
+## Creating the Follower serializer 
+##### challenge: https://learn.codeinstitute.net/courses/course-v1:CodeInstitute+DRF+2021_T1/courseware/601b5665c57540519a2335bfbcb46d93/d29d4cc768c944b1b6127f429bc14c97/?child=first
+
+all steps can be completed using previous lessons
+
+Project Description
+In the last challenge, we created our Follower Model. In this section, you will create the FollowerSerializer.
+
+Important: Please ensure that your models are correct, and that you have migrated your models to the database. Use the following Followers Model Code to check, if you haven't done so already.
+
+1. Serializer Spec
+Now, your challenge is to create the FollowerSerializer, here’s the spec:
+
+Product Spec
+- owner: read only field
+- followed_name: read only field
+
+Additionally:
+- Add the Meta class
+- Add a 'create' function to handle duplication errors
+
+2. Steps
+Important: As previously mentioned, it is highly recommended to refer to a previous example of a serializer, as there will be less helpful hints in this challenge than the previous 'like serializer' challenge
+
+1. 'followers' app
+Create the followers/serializers.py file. Add the relevant imports (x3).
+2. FollowerSerializer class
+Use the spec document above to create the FollowerSerializer class including the owner, and followed_name fields, and meta class.
+Add a create function to handle Integrity Errors.
+
+```py
+from django.db import IntegrityError
+from rest_framework import serializers
+from .models import Follower
+
+
+class FollowerSerializer(serializers.ModelSerializer):
+    owner = serializers.ReadOnlyField(source='owner.username')
+    followed_name = serializers.ReadOnlyField(source='followed.username')
+
+    class Meta:
+        model = Follower
+        fields = [
+            'id',
+            'owner',
+            'followed_name',
+            'followed',
+            'created_at',
+        ]
+    
+    def create(self, validated_data):
+        try:
+            return super().create(validated_data)
+        except IntegrityError:
+            raise serializers.ValidationError({
+                'detail': 'possible duplicate'
+            })
+```
+
+solution code:
+https://github.com/Code-Institute-Solutions/drf-api/tree/5c6997afa15b3fc83bbfb5e7521fdb5711a021e5
+
+_________________________________________________________
+
+## Creating Follower app views using generics
+##### Challenge: https://learn.codeinstitute.net/courses/course-v1:CodeInstitute+DRF+2021_T1/courseware/601b5665c57540519a2335bfbcb46d93/d29d4cc768c944b1b6127f429bc14c97/?child=first
+
+Generic Views Spec
+Now, your challenge is to create the FollowerList generic view, here’s the spec:
+
+Product Spec
+- FollowerList: call upon the subclass to GET and POST
+- set the serializer_class to FollowerSerializer
+- set the queryset to all followers
+- set the permission class to IsAuthenticateOrReadOnly
+
+
+Additionally:
+- Add the perform_create function.
+- FollowerDetail: call upon the subclass to RETRIEVE and DELETE
+- set the serializer_class to FollowerSerializer
+- set the queryset to all followers
+- set the permission class to IsOwnerOrReadOnly
+
+Steps
+Important: As previously mentioned, it is highly recommended to refer to a previous example of a generics view, such as 'likes / views.py'.
+
+1. FollowerList
+    - Add the appropriate imports (x4).
+    - Pass the appropriate generics views into your class so that you can GET and POST your views.
+    - Create the appropriate attributes based on the Product Spec above
+    - Add the perform_create function (refer to likes/views.py)
+
+2. FollowerDetail class
+    - Pass the appropriate generics views into your class so that you can Retrieve and Delete your views.
+    - Create the appropriate attributes based on the Product Spec above
+3. URLs
+    - Add your urls to the appropriate files.
+
+```py
+from django.shortcuts import render
+from rest_framework import generics, permissions
+from drf_api.permissions import IsOwnerOrReadOnly
+from .models import Follower
+from .serializers import FollowerSerializer
+
+
+class FollowerList(generics.ListCreateAPIView):
+    serializer_class = FollowerSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    queryset = Follower.objects.all()
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self.request.user)
+
+
+class FollowerDetail(generics.RetrieveDestroyAPIView):
+    serializer_class = FollowerSerializer
+    permission_classes = [IsOwnerOrReadOnly]
+    queryset = Follower.objects.all()
+```
+
+Solution Code: https://github.com/Code-Institute-Solutions/drf-api/tree/a52eb3634a052033c8bf575a48b3d588c28da8a6
+_________________________________________________________________________
+
+## Refactoring Post and Profile views
+##### https://learn.codeinstitute.net/courses/course-v1:CodeInstitute+DRF+2021_T1/courseware/601b5665c57540519a2335bfbcb46d93/d29d4cc768c944b1b6127f429bc14c97/?child=first
+
+1. Steps
+Important: As you have already completed the Follower Generics View, we recommend that you spend some time to refactor at least one of either Profile or Post Views to using generics. You can then either continue to refactor the second app or use the links below to copy and paste.
+
+Both Profile and Post need to be refactored before you continue on with the next unit.
+
+1. Profile Generics View
+Refactor your Profiles views to use Generic Views or copy and paste using the link provided:
+[Profile Views Refactor Source Code](https://github.com/Code-Institute-Solutions/drf-api/blob/23b93337ab45903140ea01232474e9fbcad4f015/profiles/views.py)
+
+2. Post Generics View
+Refactor your Post views to use Generic Views or copy and paste using the link provided:
+[Post Views Refactor Source Code](https://github.com/Code-Institute-Solutions/drf-api/blob/23b93337ab45903140ea01232474e9fbcad4f015/posts/views.py)
+
+Make sure you test your code is working before continuing
+
+______________________________________________________
+
+## Adding extra Fields to Profiles and Post Apps
+##### https://youtu.be/H3vYRGaq_4I
+
+- adding an extra field to the profile serializer to include wether or not a logged in user has followed another user. 
+    - basically, whenever a user follows another user, the Follower table updates with a record with a value of 
+        - the owner (the person who made the follow)
+        - and the followed (the profile the user followed.)
+  any time a follow is made by any user, a new record is created with these values. These values are regulated as unique by the serializer from the previous lessons.
+  this lesson updates the `ProfileSerializer` to - when an authenticated user logs in - filter through the `Follower` table and return records that are owned by that user, as this is an iterative process, it will do it for every record in the Table, meaning that is a list is generated, it will return a value for each record. 
+  In this instance, the serializer will return the id of the follow. 
+  the serializer will also use an `if` statement to check that a user is authenticated, if they are not, the filter for follows will not run, restulting in returning a `null` value for each record. 
+
+
+1. go to `profiles/serializers.py/ProfileSerializer` and import the `Follower` model
+    - `from followers.models import Follower`
+2. then, inside the `ProfileSerializer` add a new variable called `following_id`. it should have the same value as `is_owner`, the variable above it, so that it creates a new field in the serializer.
+3. `def`ine a new method called `get_following_id`, which calls the `get_` prefi on the new SerializerMethodField just created. ([more about the `get_` prefix here](#adding-custom-fields-depending-on-the-authentication-of-the-user-using-a-serializer)).
+    - pass it arguments of `self` and `obj`
+4. inside the new method, create a variable called `user`, its value should be the `user` from the `['request']` of the `context` of the `self` argument that had been passed in as an argument. 
+    - `user = self.context['request'].user`
+    - > Inside, I’ll get the current user from the context object and check if the user is authenticated.
+5. add a conditional stateent to the function that, `if` the `user` `.is_authenticated`:
+    - > Then I will check if the logged in user is following any of the other profiles.  
+    - create a variable called `following`, assign it the value of the `objects` of the `Follower` table `filter`ed by: 
+        - `owner`, where the value is the authenticated `user`
+        - `followed`, where the value is the `owner` of the `obj` parameter passed in at the top of the function 
+    - append the value with `.first()` so that it will only return the one value any time it runs.
+6. add a print statement into the function to check its working correctly
+7. then, at the end of the `if` statement, `return` the `id` of the newly established `following` variable from inside the `if` statement, appending an additional `if` statement onto it in the `return` statement to double check if following is `truthy` (has a value), else the statement will `return`` the value of `None`
+    - `return following.id if following else None`
+8. in lieu of an `else` statement on the outer `if` statement, provide a `return` statement that returns `None` in the event that the user is not authenticated
+
+
+Finished code:
+```py
+from rest_framework import serializers
+from .models import Profile
+from followers.models import Follower
+
+class ProfileSerializer(serializers.ModelSerializer):
+    owner = serializers.ReadOnlyField(source='owner.username')
+    is_owner = serializers.SerializerMethodField()
+    following_id = serializers.SerializerMethodField()
+
+    def get_is_owner(self, obj):
+        """
+        passes the request of a user into the serializer
+        from views.py
+        to check if the user is the owner of a record
+        """
+        request = self.context['request']
+        return request.user == obj.owner
+
+    # new function
+    def get_following_id(self, obj):
+        user = self.context['request'].user
+        if user.is_authenticated:
+            following = Follower.objects.filter(
+                owner=user, following=obj.owner
+            ).first()
+            # print(follwing)
+            return following.id if following else None
+        return None
+
+    class Meta:
+        model = Profile
+        fields = [
+            'id',
+            'owner',
+            'created_at',
+            'updated_at',
+            'name',
+            'content',
+            'image',
+            'is_owner',
+            'following_id',  # new field
+        ]
+```
+
+### adding the like_id field onto Posts with PostSerializer
+
+as this theoretically works the exact same way is follows does with profiles, copy the steps above to achieve the same outcome for posts and likes:
+
+ed result code following above method:
+
+```py 
+class PostSerializer(serializers.ModelSerializer):
+    owner = serializers.ReadOnlyField(source='owner.username')
+    profile_id = serializers.ReadOnlyField(source='owner.id')
+    profile_image = serializers.ReadOnlyField(source='owner.image.url')
+    is_owner = serializers.SerializerMethodField()
+        # this variable above is used to house 
+        # the requisite serializer it is called 
+        # as a function below by prefixing the variable's 
+        # name with 'get_'
+    like_id = serializers.SerializerMethodField()
+        # newly added variable to run the serializer
+        # to get an id of a like associated with the post 
+        # and the authenticated user
+
+    
+    def get_is_owner(self, obj):
+        """
+        passes the request of a user into the serializer
+        from views.py
+        to check if the user is the owner of a record
+        """
+        request = self.context['request']
+        return request.user == obj.owner
+
+    def get_like_id(self, obj):
+        # the like_id variable is prefixed with get_ to run
+        # a specific method type
+        user = self.context['request'].user
+        # the user variable gets the user that 
+        # prompted the method to run
+        if user.is_authenticated:
+            # checks if the user is authenticated 
+            # if they are:
+            liked = Like.objects.filter(owner=user, post=obj).first()
+                # the liked variable runs on each entry in Post
+                # and checks is a user is the owner of a like for that post
+            print(liked)
+                # just a print statement to check its all kushty in the CLI
+            return liked.id if liked else None
+                # for each entry, the serializer will return the id of the like
+                # created for that post by that authenticated user
+                # if the user hasnt made one, the method will return a "None" value
+        return None
+            # skip to end if user isnt authenticated and return "None" for all Posts
+    
+    def validate_image(self, value):
+        if value.size > 1024 * 1024 * 2:
+            raise serializers.ValidationError(
+                'Image size larger than 2MB!'
+            )
+        if value.image.width > 4096:
+            raise serializers.ValidationError(
+                'Image wider than 4096 pixels!'
+            )
+        if value.image.height > 4096:
+            raise serializers.ValidationError(
+                'Image taller than 4096 pixels!'
+            )
+        return value
+
+    class Meta:
+        model = Post
+        fields = [
+            'id',
+            'owner',
+            'profile_id',
+            'profile_image',
+            'created_at',
+            'updated_at',
+            'title',
+            'content',
+            'image',
+            'image_filter',
+            'is_owner',
+            'like_id',  # and don't forget to add the field!
+        ]
+
+```
+
+
+
