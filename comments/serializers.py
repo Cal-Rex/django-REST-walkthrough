@@ -1,3 +1,4 @@
+from django.contrib.humanize.templatetags.humanize import naturaltime
 from rest_framework import serializers
 from .models import Comment
 
@@ -10,6 +11,8 @@ class CommentSerializer(serializers.ModelSerializer):
         # the requisite serializer it is called 
         # as a function below by prefixing the variable's 
         # name with 'get_'
+    created_at = serializers.SerializerMethodField()
+    updated_at = serializers.SerializerMethodField()
     
     def get_is_owner(self, obj):
         """
@@ -19,6 +22,12 @@ class CommentSerializer(serializers.ModelSerializer):
         """
         request = self.context['request']
         return request.user == obj.owner
+    
+    def get_created_at(self, obj):
+        return naturaltime(obj.created_at)
+        
+    def get_updated_at(self, obj):
+        return naturaltime(obj.updated_at)
 
     class Meta:
         model = Comment

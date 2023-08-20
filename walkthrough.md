@@ -157,6 +157,28 @@ _________________________________
         - posts by another user that a user us following
         - filter user list of accounts a user is following
     - using django_filters library
+28. [profile filter challenge](#profile-filter-challenge)
+    - get a list of all of the accounts that follow a user
+29. [Comment Filter Challenge](#comment-filter-challenge)
+    - [challenge link](https://learn.codeinstitute.net/courses/course-v1:CodeInstitute+DRF+2021_T1/courseware/1ff333eb2a0644ef97769fe03f4afc30/b8a0cb61dda840bfbe0697e8dbcc0cd4/)
+    - be able to retrieve all the comments associated with a given post.
+
+----------------------------------------------------------------------
+
+## Lesson 8: Deployment
+30. [what are JWT (JSON Web Tokens) Tokens]()
+    - [JWT tokens documentation](https://jwt.io/)
+    - [DRF deployment cheatsheet](https://docs.google.com/document/d/1v8mOyB5l7aSL5loy3MVIX4z4SsLYKe-ZEGGpT_Z5DRM/edit#)
+    - [JWT Explanation video](https://youtu.be/X6t31XhpTMI)
+    - JWT tokens explained
+    - How django sessions works
+31. [Using JWT Tokens](#using-jwt-tokens)
+    - Walkthrough: https://youtu.be/pWOQ9rS5-CA
+    - using the django rest auth library
+    - adding authentication to the project
+32. [Preparing the API for deployment]()
+
+
 
 __________________________________________________________
 
@@ -3395,4 +3417,461 @@ _______________________________________________________
 - get a list of all of the accounts that follow a user
 - in short, it is like getting the accounts a user follows in reverse:
     - `'owner__following__followed__profile'` filters the accounts that a user follows
-    - `'owner__followed__owner__profile`
+    - `'owner__followed__owner__profile`   
+
+Project Description
+In this challenge, you'll be required to simply add the correct string to the filterset_fields within your profiles/views.py file.
+
+You should first attempt to work out your answer by following the table below, before looking at the steps.
+
+Check the Hints for the correct answer when you are finished.
+
+2. Product Spec
+Now, your challenge is to add the string in the filterset_fields list in order to:
+
+get all profiles that are followed by a profile, given its id
+Use your existing filterset_fields list located within profiles/views.py
+
+3. Steps
+For example, in order to get all the profiles followed by Ronan, we’ll need to complete these steps:
+
+Identify the profile owner, in this case let's use Adam, from the database of all profiles.
+Identify if that profile owner is being followed by our main user, Ronan.
+If it is, identify the "following" profile owner id.
+If this id is Ronan's, the "followed" profile, Adam, will be displayed.
+
+This process will be repeated in order to filter all profiles in the database.
+
+walkthrough:
+1. Use the 'owner' field to return to the User table
+2. Identify that 'Adam' is being followed (by anyone) using the 'followed' field.
+3. Identify who that follower is, in this case Ronan, using the 'owner' field.
+4. The 'owner' is a ForeignKey field which will return us to the User table.
+5. Return the profile id value by linking to 'profile', ('profile' will return the 'id' value automatically').
+6. This value is then used by drf to filter our profiles, e.g. if id = 1 (Ronan) then display Adam's profile.
+
+```py
+from django.db.models import Count
+from django.http import Http404
+from django.shortcuts import render
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import status, generics, permissions, filters
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from .models import Profile
+from .serializers import ProfileSerializer
+from drf_api.permissions import IsOwnerOrReadOnly
+
+
+class ProfileList(generics.ListAPIView):
+    """
+    List all profiles.
+    No create view as profile creation is handled by django signals.
+    """
+    serializer_class = ProfileSerializer
+    queryset = Profile.objects.annotate(
+        posts_count=Count('owner__post', distinct=True),
+        followers_count=Count('owner__followed', distinct=True),
+        following_count=Count('owner__following', distinct=True),
+    ).order_by('-created_at')
+    filter_backends = [
+        filters.OrderingFilter,
+        DjangoFilterBackend,
+    ]
+    ordering_fields = [
+        'post_count',
+        'followed_count',
+        'following_count',
+        'owner__followed__created_at',
+        'owner__following__created_at',
+    ]
+    filterset_fields = [
+        'owner__following__followed__profile',
+        'owner__followed__owner__profile',  # solution code here
+    ]
+
+
+class ProfileDetail(generics.RetrieveUpdateAPIView):
+    """
+    Retrieve or update a profile if you're the owner.
+    """
+    permission_classes = [IsOwnerOrReadOnly]
+    queryset = Profile.objects.all()
+    serializer_class = ProfileSerializer
+```
+
+___________________________________________________________________
+
+## Comment Filter Challenge
+##### [challenge link](https://learn.codeinstitute.net/courses/course-v1:CodeInstitute+DRF+2021_T1/courseware/1ff333eb2a0644ef97769fe03f4afc30/b8a0cb61dda840bfbe0697e8dbcc0cd4/)
+
+- be able to retrieve all the comments associated with a given post.
+
+Project Description
+In this challenge, you'll need to repeat all the steps required to create a filter in Comments.
+
+Check the Hints for the correct answer when you are finished.
+
+2. Product Spec
+Now, your challenge is to create a filterset_field filter in Comments, in order to:
+
+be able to retrieve all the comments associated with a given post.
+
+3. Steps
+Follow the steps to complete the tasks:
+
+In Comments/views.py:
+- Import the correct filter type. In this case, DjangoFilterBackend.
+- Set the filter_backends attribute in the CommentsList view.
+- Set the filterset_fields attribute to a list containing one item to filter as stated above. (Hint: start off with an example, e.g. to return all comments for Post 1)
+
+because the `Comment` and `Post` tables are directly linked via foreign key, the filterset field can just be set to `'post'`
+
+```py
+from django.shortcuts import render
+from django_filters.rest_framework import DjangoFilterBackend  # new import here
+from rest_framework import generics, permissions, filters # filters imported here
+from drf_api.permissions import IsOwnerOrReadOnly
+from .models import Comment
+from .serializers import CommentSerializer, CommentDetailSerializer
+
+
+class CommentList(generics.ListCreateAPIView):  
+        serializer_class = CommentSerializer  
+        permission_classes = [permissions.IsAuthenticatedOrReadOnly]  
+        queryset = Comment.objects.all() 
+        filter_backends = [
+        DjangoFilterBackend,  #  new filter added here
+        ]
+        filterset_fields = [  # new field here
+        'post',
+    ]
+
+
+        def perform_create(self, serializer): 
+                serializer.save(owner=self.request.user)  
+
+
+class CommentDetail(generics.RetrieveUpdateDestroyAPIView): 
+    permission_classes = [IsOwnerOrReadOnly]  
+    serializer_class = CommentDetailSerializer  
+    queryset = Comment.objects.all()  
+```
+_________________________________________________________________
+
+## Using JWT tokens
+##### https://youtu.be/pWOQ9rS5-CA
+
+- using the django rest auth library
+- adding authentication to the project
+
+
+### using the django rest auth library
+1. install the django rest auth package: 
+    - Since this video was created, Django REST Auth has introduced a new version that will be automatically installed if you use the command in the video. To ensure that you get the version of dj-rest-auth that will work while following these videos, instead of the command pip3 install dj-rest-auth, please use this:
+    - `pip3 install dj-rest-auth==2.1.9`
+
+2. add `rest_framework.authtoken` and `dj_rest_auth` to `INTALLED_APPS` in `settings.py`
+
+3. add `dj-rest-auth/` in the main app `urls.py`, add an `include` to it that passes in `'dj_rest_auth.urls'`
+    ```py
+    from django.contrib import admin
+    from django.urls import path, include
+
+    urlpatterns = [
+        path('admin/', admin.site.urls),
+        path('api-auth/', include('rest_framework.urls')),
+        path('dj-rest-auth/', include('dj_rest_auth_urls')),
+        path('', include('profiles.urls')),
+        path('', include('posts.urls')),
+        path('', include('comments.urls')),
+        path('', include('likes.urls')),
+        path('', include('followers.urls')),
+    ]
+    ```
+
+4. as new apps have been installed, migrate the database
+
+### add user site registration
+
+5. install Django allAuth with the following install command: `pip3 install 'dj-rest-auth[with_social]'`
+
+6. Once that's installed, add these new apps to the `INSTALLED_APPS` list in `settings.py`
+    -   ```py
+        'django.contrib.sites',
+        'allauth',
+        'allauth.account',
+        'allauth.socialaccount',
+        'dj_rest_auth.registration',
+        ```
+
+7. below `INSTALLED_APPS` in `settings.py`, as a seperate variable called `SITE_ID` and give it the value of `1`
+    - `SITE_ID = 1`
+
+8. in the main `urls.py`, add the following path:
+    - `path('dj-rest-auth/registration/', include('dj_rest_auth.registration.urls'))`
+
+### implementing JWT Tokens
+
+> Because DRF doesn’t support JWT tokens for the browser interface out-of-the-box, we’ll need to use session authentication in development. And for Production we’ll use Tokens. This will allow us to continue to be able to log into our API as we work on it.
+
+- tokens not supported for the browsable API
+- django sessions should be used in development
+- tokens are to be used in production
+
+9. update `env.py` to contain `os.environ['DEV'] = '1'`
+
+10. install the following via the CLI: `pip3 install djangorestframework-simplejwt`
+
+11. in `settings.py`, add the following code to make the app run tokens or sessions authentication depending on the environment the app is running in
+    ```py
+    REST_FRAMEWORK = {
+        'DEFAULT_AUTHENTICATION_CLASSES': [(
+            'rest_framework.authentication.SessionAuthentication'
+            if 'DEV' in os.environ
+            else 'dj_rest_auth.jwt_auth.JWTCookieAuthentication'
+        )]
+    }
+    ```
+
+12. next, enable token authentication by adding another variable in `settings.py`:
+    - `REST_USE_JWT = True`
+13. also, make sure that the token authentication is sent over HTTPS only/is secure by adding this variable as well:
+    - `JWT_AUTH_SECURE = True`
+14. next, declare the names for the access and refresh tokens used by JWT framework by adding another 2 variables below the 2 above:
+    ```py
+    JWT_AUTH_COOKIE = 'my-app-auth'
+    JWT_AUTH_REFRESH_COOKIE = 'my-refresh-token'
+    ```
+
+### using the UserDetailSerializer
+
+> Great! Now we need to add the profile_id and profile_image to fields returned when requesting logged in user’s details. This way we’ll know which profile to link to and what image to show in the navigation bar for a logged in user.
+
+15. in the main app (`drf_api`) create a `serializers.py`
+16. inside it, paste in the following code:
+    ```py
+    from dj_rest_auth.serializers import UserDetailsSerializer
+    from rest_framework import serializers
+
+    class CurrentUserSerializer(UserDetailsSerializer):
+        profile_id = serializers.ReadOnlyField(source='profile.id')
+        profile_image = serializers.ReadOnlyField(source='profile.image.url')
+
+        class Meta(UserDetailsSerializer.Meta):
+            fields = UserDetailSerializer.Meta.fields + (
+                'profile_id', 'profile_image'
+            )
+    ```
+    > All we’re doing here is adding the profile_id and profile_image fields to the stock `UserDetailsSerializer`
+17. with the serializer created, head back to `settings.py` and add the following variable to overwrite the default serializer that handles user details:
+    -   ```py
+        REST_AUTH_SERIALIZERS = {
+            'USER_DETAILS_SERIALIZER': 'drf_api.serializers.CurrentUserSerializer'
+        }
+        ```
+18. with everything installed, run a migration again
+
+19. and with everything migrated, update the requirements.txt file
+    - `pip3 freeze > requirements.txt`
+
+> Ok, we’re finally finished setting up  JSON Web Token authentication for our app.
+
+### dj-rest-auth API Endpoints explained
+
+| Explanation | dj-rest-auth/ url | http | data                             | data received                         |
+| :---------- | :---------------: | :--: | :------------------------------: | :-----------------------------------: |
+| To register, our users will send a POST request to  ‘django rest auth register’ with their username, password and confirmed password. | registration/     | POST | username + password1 + password2 |                                       |
+| To log in, our users will send a POST  request to ‘login’ with their username and password. As mentioned, they will  be issued an access and refresh token. | login/            | POST | username + password              | access token + refresh token          |
+| To log out, our users will just  send a POST request to ‘logout’. | logout/           | POST |                                  |                                       |
+| To fetch user specific details, like  user_id, profile_id and profile_image,  
+we’ll make a GET request to ‘user’ | user/             | GET  | access token + refresh token     | username + profile_id + profile_image |
+| To refresh user access tokens,  
+we’ll make POST requests to token/refresh and get  a new one if the refresh token hasn’t expired. | token/refresh/    | POST | access token + refresh token     | (new)access token                     |
+
+_____________________________________________________________
+
+## Preparing the API for deployment
+##### https://youtu.be/-fQ5r20x_iM
+
+> In this video, we’ll do a bit of ‘housekeeping’  in order to prepare our API for deployment. 
+
+- Add the root route for the API
+- add pagination to all list views
+    - help manage effective data loading of your app
+- setting JSON as the default render for production
+- date/time formatting for all the `created_at` and `updated_at` fields
+
+### Add the root route for the API
+
+> Once our API goes live, it would be nice to get a message that indicates everything has been deployed  successfully, rather than an ugly 404 error.
+
+1. create a views.py file in the main (drf_api) app
+2. import: 
+```py
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+```
+3. `def` a `root_route` method that takes the parameter of `request` and `return`s a `Response` of {K: V}P where the Key is `"message"` and the value is a string of whatever you like
+4. add a decorator to the top of it called `@api_view()`
+    ```py
+    from rest_framework.decorators import api_view
+    from rest_framework.response import Response
+
+
+    @api_view()
+    def root_route(request):
+        return Response({
+            "message": "YO MTV Cribs welcome to my drf API"
+        })
+    ```
+5. in the urls.py file in the main app, import `root_route` from `.views`
+6. add a new path to `urlpatterns`, where its render is `root_route`
+
+### add pagination to all list views
+
+> As you have probably noticed, we always return  all the Model instances from the database in a ListView. But what if our app got really popular  and people started posting pictures and comments by the millions? Fetching all of them in one go every time would be extremely inefficient. That’s where PAGINATION comes in. It helps us to manage the load by chunking the results and only fetching content the user wishes to see by either pressing a ‘next page’ button or by scrolling down the page Pagination is really easy to set up  with REST Framework.
+
+Pagination:
+- helps manage the request load by chunking the results
+- makes fetching just a subset of data the user is looking for possible
+- can be implemented with buttons or infinite loading on the client side
+
+setting up pagination:
+
+1. go to `settings.py`, inside the `REST_FRAMEWORK` object variable:
+    - add a second {K: V}P to the object:
+        - Key: `'DEFAULT_PAGINATION _CLASS'`
+        - value: `'rest_framework.pagination.PageNumberPagination'`
+    - add a third {K: V}P to the object:
+        - Key: `'PAGE_SIZE'`
+        - value: `10`
+
+```py
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [(
+        'rest_framework.authentication.SessionAuthentication'
+        if 'DEV' in os.environ
+        else 'dj_rest_auth.jwt_auth.JWTCookieAuthentication'
+    )],
+    'DEFAULT_PAGINATION_CLASS': 
+        'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 10,
+}
+```
+> If we go to any ListView, we can see that now an object is returned instead of a list like before. Inside we can see information about the total count, the next and previous links and  of course the list of results. The links will show up if the number of results exceeds the page size, which we just set to ten. Don’t worry about the broken localhost link, it’s because drf doesn’t get along with Gitpod’s port forwarding. This issue will disappear once we deploy to Heroku. 
+
+
+### setting JSON as the default render for production
+
+> Another thing to get out of the way is to set the default renderer to JSON for the production environment. What this means is that we want this nice, in-browser interface to be available in development only. All the frontend app cares about is JSON, and nothing else, so it would be pointless to send html.
+
+1. go to `settings.py` in the main app
+2. below the `REST_FRAMEWORK` object variable, add an `if` statement that states: `if 'DEV' not in os.environ`:
+    - the value of `REST_FRAMEWORK['DEFAULT_RENDERER_CLASSES']` should be set to `['rest_framework.renderers.JSONRenderer'],`
+
+```py
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [(
+        'rest_framework.authentication.SessionAuthentication'
+        if 'DEV' in os.environ
+        else 'dj_rest_auth.jwt_auth.JWTCookieAuthentication'
+    )],
+    'DEFAULT_PAGINATION_CLASS': 
+        'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 10,
+}
+if 'DEV'; not in os.environ:
+    REST_FRAMEWORK['DEFAULT_RENDERER_CLASSES'] = [
+        'rest_framework.renderers.JSONRenderer'
+    ]
+```
+
+### date/time formatting for all the `created_at` and `updated_at` fields
+
+> Ok, now the date and time formatting. As you can see, the created_at and updated_at strings look quite messy. To make them more human-readable, all I have to do is specify the date time format in the rest framework object and set it to this weird looking string. It first prints the day, then the abbreviated month name and finally a four digit year.
+
+- [django rest framework docs: date and time formatting](https://www.django-rest-framework.org/api-guide/settings/#date-and-time-formatting)
+- [python docs: time.strftime function](https://docs.python.org/3/library/time.html#time.strftime)
+
+1. in the `REST_FRAMEWORK` variable in `settings.py`, add another KVP:
+    `'DATETIME_FORMAT': '%d %b %Y'`
+
+```py
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [(
+        'rest_framework.authentication.SessionAuthentication'
+        if 'DEV' in os.environ
+        else 'dj_rest_auth.jwt_auth.JWTCookieAuthentication'
+    )],
+    'DEFAULT_PAGINATION_CLASS': 
+        'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 10,
+    'DATETIME_FORMAT': '%d %b %Y',
+}
+if 'DEV'; not in os.environ:
+    REST_FRAMEWORK['DEFAULT_RENDERER_CLASSES'] = [
+        'rest_framework.renderers.JSONRenderer'
+    ]
+```
+
+> That date format works nicely for content that doesn’t change that often, like profiles or posts. However, for comments that get added and updated constantly, it would be nicer if we could return a string that says how long ago it was created and updated. It’s very easy to overwrite the default date time we just set.
+
+2. go to the `comments` app and open up the `serializers.py`
+    - import: `from django.contrib.humanize.templatetags.humanize import naturaltime`
+3. inside the `CommentSerializer` class:
+    - add fields for `created_at` and `updated_at` that have values of `serializers.SerializerMethodField()`
+    - use the `get_` prefix and `def`ine functions for the 2 new fields
+    - both should take parameters of `self` and `obj`
+    - both should `return` a call to the `naturaltime` imported function, where the value is the field name appended to `obj`
+
+```py
+from django.contrib.humanize.templatetags.humanize import naturaltime
+    # the import to use the naturaltime function
+from rest_framework import serializers
+from .models import Comment
+
+class CommentSerializer(serializers.ModelSerializer):
+    owner = serializers.ReadOnlyField(source='owner.username')
+    profile_id = serializers.ReadOnlyField(source='owner.id')
+    profile_image = serializers.ReadOnlyField(source='owner.image.url')
+    is_owner = serializers.SerializerMethodField()
+
+    # newly created fields
+    created_at = serializers.SerializerMethodField()
+    updated_at = serializers.SerializerMethodField()
+    
+    def get_is_owner(self, obj):
+        """
+        passes the request of a user into the serializer
+        from views.py
+        to check if the user is the owner of a record
+        """
+        request = self.context['request']
+        return request.user == obj.owner
+    
+    # functions using get_ that call the serializers above
+    def get_created_at(self, obj):
+        return naturaltime(obj.created_at)
+        
+    def get_updated_at(self, obj):
+        return naturaltime(obj.updated_at)
+
+    class Meta:
+        model = Comment
+        fields = [
+            'id',
+            'owner',
+            'profile_id',
+            'profile_image',
+            'created_at',
+            'updated_at',
+            'post',
+            'content',
+            'is_owner',
+        ]
+
+
+class CommentDetailSerializer(CommentSerializer):
+    post = serializers.ReadOnlyField(source='post.id')
+```
