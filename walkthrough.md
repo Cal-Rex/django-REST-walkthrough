@@ -3390,4 +3390,9 @@ class ProfileDetail(generics.RetrieveUpdateAPIView):
 
 _______________________________________________________
 
-## 
+## profile filter challenge
+
+- get a list of all of the accounts that follow a user
+- in short, it is like getting the accounts a user follows in reverse:
+    - `'owner__following__followed__profile'` filters the accounts that a user follows
+    - `'owner__followed__owner__profile`
