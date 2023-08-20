@@ -13,6 +13,8 @@ class PostSerializer(serializers.ModelSerializer):
         # as a function below by prefixing the variable's 
         # name with 'get_'
     like_id = serializers.SerializerMethodField()
+    comments_count = serializers.ReadOnlyField()
+    likes_count = serializers.ReadOnlyField()
     
     def get_is_owner(self, obj):
         """
@@ -61,4 +63,6 @@ class PostSerializer(serializers.ModelSerializer):
             'image_filter',
             'is_owner',
             'like_id',
+            'likes_count',
+            'comments_count',
         ]

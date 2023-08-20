@@ -1,6 +1,7 @@
+from django.db.models import Count
 from django.http import Http404
 from django.shortcuts import render
-from rest_framework import status, generics, permissions
+from rest_framework import status, generics, permissions, filters
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from .models import Profile
@@ -14,7 +15,21 @@ class ProfileList(generics.ListAPIView):
     No create view as profile creation is handled by django signals.
     """
     serializer_class = ProfileSerializer
-    queryset = Profile.objects.all()
+    queryset = Profile.objects.annotate(
+        posts_count=Count('owner__post', distinct=True),
+        followers_count=Count('owner__followed', distinct=True),
+        following_count=Count('owner__following', distinct=True),
+    ).order_by('-created_at')
+    filter_backends = [
+        filters.OrderingFilter
+    ]
+    ordering_fields = [
+        'post_count',
+        'followed_count',
+        'following_count',
+        'owner__followed__created_at',
+        'owner__following__created_at',
+    ]
 
 # class ProfileList(APIView):
 #     def get(self, request):
