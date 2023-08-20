@@ -149,7 +149,16 @@ _________________________________
 26. [adding a search feature to the API](#adding-a-search-feature-to-the-api)
     Walkthrough: https://youtu.be/_GmXX51kvtY
     - create text search for Posts, search either by Author's username or port title
-______________________________
+27. [Adding the filter feature to our API](#adding-the-filter-feature-to-our-api)
+    - Walkthrough: https://youtu.be/Xx6JmpgN0qs
+    - add a filter feature to filter the API data
+        - posts owned by a user
+        - posts liked by a user
+        - posts by another user that a user us following
+        - filter user list of accounts a user is following
+    - using django_filters library
+
+__________________________________________________________
 
 ## Setting up project with Django & Cloudinary on Github
 ##### https://youtu.be/9BuhX2Tskbk
@@ -3187,3 +3196,198 @@ class PostDetail(generics.RetrieveUpdateDestroyAPIView):
 ```
 
 __________________________________________________________________________
+
+## Adding the filter feature to our API
+##### https://youtu.be/Xx6JmpgN0qs
+
+- add a filter feature to filter the API data
+    - posts owned by a user
+    - posts liked by a user
+    - posts by another user that a user us following
+    - filter user list of accounts a user is following
+- using django_filters library
+
+**this section was a bit much trying to understand the traversal of tables, so rewatch the video from 1.52**
+
+
+### using django_filters
+
+to use filtering methods in this section, the project first needs to have the `django_filters` library installed. install it via the CLI using the following command:
+- `pip3 install django-filter`
+
+then, include it in `INSTALLED_APPS` in `settings.py` as `django_filters`
+
+**then, update requirements.txt**: `pip3 freeze > requirements.txt`
+
+to then use `django_filters`, the following import needs to be made on any file wanting to use the library:
+- `from django_filters.rest_framework import DjangoFilterBackend`
+
+### add a filter feature to posts:
+
+in the `views.py` of the `posts` app: 
+
+1. import django filters
+    - `from django_filters.rest_framework import DjangoFilterBackend`
+2. inside the `PostList` view, add `DjangoFilterBackend` to the `filter_backends` list variable
+3. create a variable called `filterset_fields` which is a list
+    - > To get the user post feed by their profile id, we’ll have to take the following steps: 
+    
+    > First, we'll have to find out who owns each post in the database. Next, we'll need to see if a post owner is being followed by a specific user. Finally, we'll need to point to that user's profile so that we can use its id to filter our results. 
+    
+    > Similar to using dot notation from previous sections, we'll have to figure out how to navigate our tables.
+
+#### posts by another user that a user us following
+
+4. to filter posts by another user that a user if following, add the followingvalue to the `filerset_fields` list:
+    - refenrence the `owner` of the post, which will give access to the `User` table, 
+    - this gives access to referencing the `Follower` table by using the `followed` `related_name`. the `Follower` table can now be queried to see if any entries that have a `followed` value equal to the `Post.owner` and if the person that owns that `followed` value is the accessing user (`owner`, as in `Follower.owner`), then, the accessing `owner`(`Follower.owner`)'s profile is called by using `profile`
+    - `'owner__followed__owner__profile'`
+    > Model instances can always be filtered by id,  so we don’t need to add “double underscore id”.
+
+#### posts liked by a user
+
+5. as `Post` and `Like` tables are linked by a related_name of `likes`, `likes` can be used to filter to the `owner` of the like, which is a `ForeignKey` linked to the `User` table, which is also linked to the `Profile` table by its own `owner` field
+    - `'likes__owner__profile'`
+
+#### posts owned by a user
+
+6. as `Post` is linked to `User` via the `owner` field, the `Profile` table can be accessed directly with double underscore notation
+    - `'owner__profile'`
+
+7. add these fields to `filterset_fields` should produce a result like this:
+
+```py
+from django.db.models import Count
+from django.shortcuts import render
+from django.http import Http404
+from django_filters.rest_framework import DjangoFilterBackend  # new filter import here
+from rest_framework import status, permissions, generics, filters
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from .models import Post
+from .serializers import PostSerializer
+from drf_api.permissions import IsOwnerOrReadOnly
+
+class PostList(generics.ListCreateAPIView):
+    """
+    List posts or create a post if logged in
+    The perform_create method associates the post with the logged in user.
+    """
+    serializer_class = PostSerializer
+    permission_classes = [
+        permissions.IsAuthenticatedOrReadOnly
+    ]
+    queryset = Post.objects.annotate(
+        comments_count=Count('comment', distinct=True),
+        likes_count=Count('likes', distinct=True)
+
+    ).order_by('created_at')
+    filter_backends = [
+        filters.OrderingFilter,
+        filters.SearchFilter,
+        DjangoFilterBackend,  # new filter added here
+    ]
+    ordering_fields = [
+        'comments_count',
+        'likes_count',
+        'likes__created_at',
+    ]
+    search_fields = [
+        'owner__username',
+        'title',
+    ]
+    filterset_fields = [  # new fields added here
+        'owner__followed__owner__profile',
+        'likes__owner__profile',
+        'owner__profile',
+    ]
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self.request.user)
+
+
+class PostDetail(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Retrieve a post and edit or delete it if you own it.
+    """
+    serializer_class = PostSerializer
+    permission_classes = [IsOwnerOrReadOnly]
+    queryset = Post.objects.annotate(
+        comments_count=Count('comment', distinct=True),
+        likes_count=Count('likes', distinct=True)
+
+    ).order_by('created_at')
+    filter_backends = [
+        filters.OrderingFilter
+    ]
+    ordering_fields = [
+        'comments_count',
+        'likes_count',
+        'likes__created_at',
+    ]
+```
+
+### filter user list of accounts a user is following
+
+> We'll be able to filter user profiles that  follow a user with a given profile_id.
+
+1. go to profiles > views, import `from django_filters.rest_framework import DjangoFilterBackend`
+2. add `DjangoFilterBackend` to the `filter_backends` list in `ProfileList`
+3. create the `filterset_fields` list variable:
+    - [watch the walkthrough video from 6.16 to go through the explanation of this with diagrams](https://youtu.be/Xx6JmpgN0qs)
+    - add the following filter: `'owner__following__followed__profile'`
+
+updated code:
+
+```py
+from django.db.models import Count
+from django.http import Http404
+from django.shortcuts import render
+from django_filters.rest_framework import DjangoFilterBackend  # new import added here
+from rest_framework import status, generics, permissions, filters
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from .models import Profile
+from .serializers import ProfileSerializer
+from drf_api.permissions import IsOwnerOrReadOnly
+
+
+class ProfileList(generics.ListAPIView):
+    """
+    List all profiles.
+    No create view as profile creation is handled by django signals.
+    """
+    serializer_class = ProfileSerializer
+    queryset = Profile.objects.annotate(
+        posts_count=Count('owner__post', distinct=True),
+        followers_count=Count('owner__followed', distinct=True),
+        following_count=Count('owner__following', distinct=True),
+    ).order_by('-created_at')
+    filter_backends = [
+        filters.OrderingFilter,
+        DjangoFilterBackend,  #  new filter added here
+    ]
+    ordering_fields = [
+        'post_count',
+        'followed_count',
+        'following_count',
+        'owner__followed__created_at',
+        'owner__following__created_at',
+    ]
+    filterset_fields = [  # new field here
+        'owner__following__followed__profile',
+    ]
+
+
+class ProfileDetail(generics.RetrieveUpdateAPIView):
+    """
+    Retrieve or update a profile if you're the owner.
+    """
+    permission_classes = [IsOwnerOrReadOnly]
+    queryset = Profile.objects.all()
+    serializer_class = ProfileSerializer
+```
+
+_______________________________________________________
+
+## 
