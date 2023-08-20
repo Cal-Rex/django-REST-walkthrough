@@ -144,9 +144,11 @@ _________________________________
     - adding a count for the number of profiles a user is following
     - using the annotate function
     - make fields sortable with filters
-25. [Adding Extra Fields to Post challenge]()
+25. [Adding Extra Fields to Post challenge](#adding-extra-fields-to-post-challenge)
     - challenge
-
+26. [adding a search feature to the API](#adding-a-search-feature-to-the-api)
+    Walkthrough: https://youtu.be/_GmXX51kvtY
+    - create text search for Posts, search either by Author's username or port title
 ______________________________
 
 ## Setting up project with Django & Cloudinary on Github
@@ -3105,3 +3107,83 @@ In posts/views.py:
 3. Your new queryset should contain 2 fields: comments_count, likes_count
 
 **[Solution Code](https://github.com/Code-Institute-Solutions/drf-api/tree/a7033eacc714c79df49679fbebd455e300e09d95)**
+
+_____________________________________________________________
+
+## adding a search feature to the API
+##### https://youtu.be/_GmXX51kvtY
+
+- create text search for Posts, search either by Author's username or port title
+- how to implement text search feature on a view
+
+
+1. inside `posts`' `views.py` file, in the `PostList` class:
+    - add another filter to the `filter_backends` list called `filters.SearchFilter`
+    - now, create a new variable called `search_fields` that takes a list of values to search by. in this case it will be `owner__username` to get the owner of a post and `title` for the title of the post
+2. run the environment, see if it works. search field should be in the filter button
+
+```py
+from django.db.models import Count
+from django.shortcuts import render
+from django.http import Http404
+from rest_framework import status, permissions, generics, filters
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from .models import Post
+from .serializers import PostSerializer
+from drf_api.permissions import IsOwnerOrReadOnly
+
+class PostList(generics.ListCreateAPIView):
+    """
+    List posts or create a post if logged in
+    The perform_create method associates the post with the logged in user.
+    """
+    serializer_class = PostSerializer
+    permission_classes = [
+        permissions.IsAuthenticatedOrReadOnly
+    ]
+    queryset = Post.objects.annotate(
+        comments_count=Count('comment', distinct=True),
+        likes_count=Count('likes', distinct=True)
+
+    ).order_by('created_at')
+    filter_backends = [
+        filters.OrderingFilter,
+        filters.SearchFilter  # new filter added here
+    ]
+    ordering_fields = [
+        'comments_count',
+        'likes_count',
+        'likes__created_at',
+    ]
+    search_fields = [  # new variable for search fields added here
+        'owner__username',
+        'title',
+    ]
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self.request.user)
+
+class PostDetail(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Retrieve a post and edit or delete it if you own it.
+    """
+    serializer_class = PostSerializer
+    permission_classes = [IsOwnerOrReadOnly]
+    queryset = Post.objects.annotate(
+        comments_count=Count('comment', distinct=True),
+        likes_count=Count('likes', distinct=True)
+
+    ).order_by('created_at')
+    filter_backends = [
+        filters.OrderingFilter
+    ]
+    ordering_fields = [
+        'comments_count',
+        'likes_count',
+        'likes__created_at',
+    ]
+
+```
+
+__________________________________________________________________________
