@@ -176,7 +176,23 @@ _________________________________
     - Walkthrough: https://youtu.be/pWOQ9rS5-CA
     - using the django rest auth library
     - adding authentication to the project
-32. [Preparing the API for deployment]()
+32. [Preparing the API for deployment](#preparing-the-api-for-deployment)
+    - Walkthrough: https://youtu.be/-fQ5r20x_iM
+    - Add the root route for the API
+    - add pagination to all list views
+        - help manage effective data loading of your app
+    - setting JSON as the default render for production
+    - date/time formatting for all the `created_at` and `updated_at` fields
+
+----------------------------------------------------------------------
+
+## Lesson 8.5 Setting app up for production and deployment on heroku
+
+33. [deploying](#deploying-to-heroku)
+34. [dj rest auth bugfix](#dj-rest-auth-bug-fix)
+    - dj rest auth currently has a bug where users cant log out
+    - code in this section fixes that
+35. [LAST THING: allow the API to spi up in multiple instances](#allow-the-api-to-spin-up-in-multiple-instances)
 
 
 
@@ -3875,3 +3891,386 @@ class CommentSerializer(serializers.ModelSerializer):
 class CommentDetailSerializer(CommentSerializer):
     post = serializers.ReadOnlyField(source='post.id')
 ```
+_____________________________________________________
+
+## Deploying to Heroku
+
+1. create a database with [ElephantSQL.com](https://customer.elephantsql.com/)
+    - create account/login and create a new instance, follow steps
+    - copy the unique url for your newly created database
+
+2. create a new app in heroku
+    - name it
+    - select the region it operates in
+
+3. go to the **settings** of the newly created app and add the elephantSQL database url as a config var:
+    - `DATABASE_URL` = `<whatever the link is>`
+
+4. install psycopg2 into the project workspace using the CLI
+    -  `pip3 install dj_database_url==0.5.0 psycopg2`
+
+5. in `settings.py` add the following import below the `os` import:
+    -   ```py
+        import os
+        import dj_database_url
+        ```
+
+6. go to the `DATABASES` variable in `settings.py` and overwrite it with the following code:
+    ```py
+    if 'DEV' in os.environ:
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': BASE_DIR / 'db.sqlite3',
+            }
+    }
+    else:
+        DATABASES = {
+            'default': dj_database_url.parse(os.environ.get("DATABASE_URL"))
+    }
+    ```
+    > This will ensure that when you have an environment variable for DEV in your environment the code will connect to the sqlite database here in your IDE. Otherwise it will connect to your external database, provided the DATABASE_URL environment variable exist.
+
+7. add the following to the `env.py` file:
+    ```py
+    os.environ['DATABASE_URL'] = "<your PostgreSQL URL here>"
+    ```
+    > Remember to add quotes as this needs to be a string.
+
+8. Temporarily comment out the DEV environment variable so that your IDE can connect to your external database
+    ```py
+    import os
+
+    os.environ['CLOUDINARY_URL'] = "cloudinary://..."
+    os.environ['SECRET_KEY'] = "Z7o..."
+    # os.environ['DEV'] = '1'
+    os.environ['DATABASE_URL'] = "postgres://..."
+    ```
+
+9. Back in `settings.py`, add a print statement to confirm connection to the external database
+    ```py
+    if 'DEV' in os.environ:
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': BASE_DIR / 'db.sqlite3',
+            }
+    }
+    else:
+        DATABASES = {
+            'default': dj_database_url.parse(os.environ.get("DATABASE_URL"))
+    }
+    print("connected")
+    ```
+
+10. in the terminal, `-–dry-run makemigrations` to confirm you are connected to the external database:
+    ```
+    python3 manage.py makemigrations --dry-run
+    ```
+    > If you are, you should see the ‘connected’ message printed to the terminal
+    - when that's successful, remove the print statement
+
+11. Migrate your database models to your new database
+    ```
+    python3 manage.py makemigrations
+    python3 manage.py migrate
+    ```
+12. create a super user for the newly connected Elephant SQLdatabase in the CLI:
+    ```
+    python3 manage.py createsuperuser
+    ```
+    - follow the command prompts
+
+13. go to the ElephantSQL page for your database, in the left side navigation, select “BROWSER”
+    - Click the **Table queries** button, select `auth_user`
+    > When you click “Execute”, you should see your newly created superuser details displayed. This confirms your tables have been created and you can add data to your database
+
+14. back in the terminal of your IDE workspace, install gunicorn:
+    ```
+    pip3 install gunicorn django-cors-headers
+    ```
+
+15. update requirements.txt via the terminal
+    ```
+    pip3 freeze --local > requirements.txt
+    ```
+
+16. Create a `Procfile`, add these 2 commands to it:
+    ```
+    release: python manage.py makemigrations && python manage.py migrate
+    web: gunicorn drf_api.wsgi
+    ```
+    > Remember to save the file.
+
+17. go to `settings.py`, update the value of the ALLOWED_HOSTS variable to include the Heroku app’s URL
+    ```py
+    ALLOWED_HOSTS = ['localhost', '<your_app_name>.herokuapp.com']
+    ```
+
+18. Add `corsheaders` to `INSTALLED_APPS` in `settings.py`
+    ```py
+    INSTALLED_APPS = [
+    ...
+    'dj_rest_auth.registration',
+    'corsheaders',
+    ...
+    ]
+    ```
+
+19. Add corsheaders middleware to the **TOP** of the `MIDDLEWARE`
+    ```py
+    SITE_ID = 1
+    MIDDLEWARE = [
+        'corsheaders.middleware.CorsMiddleware',
+    ...
+    ]
+    ```
+
+20. Under the `MIDDLEWARE` list, set the `ALLOWED_ORIGINS` for the network requests made to the server with the following code:
+    ```py
+    if 'CLIENT_ORIGIN' in os.environ:
+        CORS_ALLOWED_ORIGINS = [
+            os.environ.get('CLIENT_ORIGIN')
+        ]
+    else:
+        CORS_ALLOWED_ORIGIN_REGEXES = [
+            r"^https://.*\.gitpod\.io$",
+        ]
+    ```
+    > Here the allowed origins are set for the network requests made to the server. The API will use the CLIENT_ORIGIN variable, which is the front end app's url. We haven't deployed that project yet, but that's ok. If the variable is not present, that means the project is still in development, so then the regular expression in the else statement will allow requests that are coming from your IDE.
+
+21. Enable sending cookies in cross-origin requests so that users can get authentication functionality
+    ```py
+    ...
+    else:
+        CORS_ALLOWED_ORIGIN_REGEXES = [
+            r"^https://.*\.gitpod\.io$",
+        ]
+
+    CORS_ALLOW_CREDENTIALS = True
+    ```
+
+22. To be able to have the front end app and the API deployed to different platforms, set the JWT_AUTH_SAMESITE attribute to 'None'. Without this the cookies would be blocked
+    ```py
+    JWT_AUTH_COOKIE = 'my-app-auth'
+    JWT_AUTH_REFRESH_COOKE = 'my-refresh-token'
+    JWT_AUTH_SAMESITE = 'None'  # add this one below the ones above
+    ```
+
+23. Remove the value for `SECRET_KEY` and replace with the following code to use an environment variable instead:
+    ```py
+    # SECURITY WARNING: keep the secret key used in production secret!
+    SECRET_KEY = os.getenv('SECRET_KEY')
+    ```
+
+24. Set a **NEW** value for your `SECRET_KEY` environment variable in `env.py`, **do NOT use the same one that has been published to GitHub in your commits**
+    ```py
+    os.environ.setdefault("SECRET_KEY", "CreateANEWRandomValueHere")
+    ```
+
+25. Set the `DEBUG` value to be `True` only if the `DEV` environment variable exists. This will mean it is `True` in development, and `False` in production
+    ```py
+    DEBUG = 'DEV' in os.environ
+    ```
+
+26. Comment `DEV` back in `env.py`
+    ```py
+    import os
+
+    os.environ['CLOUDINARY_URL'] = "cloudinary://..."
+    os.environ['SECRET_KEY'] = "Z7o..."
+    os.environ['DEV'] = '1'
+    os.environ['DATABASE_URL'] = "postgres://..."
+    ```
+
+27. Ensure the project requirements.txt file is up to date. In the IDE terminal of your DRF API project enter the following:
+    ```
+    pip freeze --local > requirements.txt
+    ```
+
+28. back in Heroku, add 3 more config vars in the settings panel of the app:
+    - SECRET_KEY (you can make one up, but don’t use the one that was originally in the settings.py file!)
+    - CLOUDINARY_URL, and for the value, copy in your Cloudinary URL from your env.py file (do not add quotation marks!)
+    - DISABLE_COLLECTSTATIC, its value should be `1`
+
+29. connect the app up to the github repo in the deployment section of heroku
+
+30. deploy on heroku!
+
+31. if you hit a snag here, like a 400 bad request, change the allowed host to the herokuapp link for the app
+
+
+### dj-rest-auth Bug Fix
+
+#### Problem Statement
+It turns out that dj-rest-auth has a bug that doesn’t allow users to log out (ref: DRF Rest Auth Issues).
+
+The issue is that the samesite attribute we set to ‘None’ in settings.py (JWT_AUTH_SAMESITE = 'None') is not passed to the logout view. This means that we can’t log out, but must wait for the refresh token to expire instead.
+
+#### Proposed Solution
+One way to fix this issue is to have our own logout view, where we set both cookies to an empty string and pass additional attributes like secure, httponly and samesite, which was left out by mistake by the library.
+
+Follow the steps below to fix this bug:
+
+1. In `drf_api/views.py`, import `JWT_AUTH settings` from `settings.py.`
+    ```py
+    from rest_framework.decorators import api_view
+    from rest_framework.response import Response
+    from .settings import (
+        JWT_AUTH_COOKIE,
+        JWT_AUTH_REFRESH_COOKIE,
+        JWT_AUTH_SAMESITE,
+        JWT_AUTH_SECURE,
+    )
+    ```
+
+2. Write a `logout` view. Looks like quite a bit, but all that’s happening here is that we’re setting the value of both the access token (JWT_AUTH_COOKIE) and refresh token (JWT_AUTH_REFRESH_COOKIE) to empty strings. We also pass samesite=JWT_AUTH_SAMESITE, which we set to ’None’ in settings.py and make sure the cookies are httponly and sent over HTTPS,
+    ```PY
+    # dj-rest-auth logout view fix
+    @api_view(['POST'])
+    def logout_route(request):
+        response = Response()
+        response.set_cookie(
+            key=JWT_AUTH_COOKIE,
+            value='',
+            httponly=True,
+            expires='Thu, 01 Jan 1970 00:00:00 GMT',
+            max_age=0,
+            samesite=JWT_AUTH_SAMESITE,
+            secure=JWT_AUTH_SECURE,
+        )
+        response.set_cookie(
+            key=JWT_AUTH_REFRESH_COOKIE,
+            value='',
+            httponly=True,
+            expires='Thu, 01 Jan 1970 00:00:00 GMT',
+            max_age=0,
+            samesite=JWT_AUTH_SAMESITE,
+            secure=JWT_AUTH_SECURE,
+        )
+        return response
+    ```
+
+3. Now that the logout view is there, it has to be included in `drf_api/urls.py.` The logout_route also needs to be imported:
+    ```py
+    from .views import root_route, logout_route
+    ```
+
+4. and then included in the urlpatterns list. The important thing to note here is that our logout_route has to be placed above the default dj-rest-auth urls, so that it is matched first.
+```py
+urlpaterns = [
+    path('', root_route),
+    path('admin', admin.site.urls),
+    path('api-auth/', include('rest_framework.urls')),
+    # our logout route has to be above the default one to be matched first
+    path('dj-rest-auth/logout/', logout_route),
+    path('dj-rest-auth/', include('dj_rest_auth.urls')),
+    ...
+]
+```
+
+5. add, commit and push!
+
+_________________________________________________________________________________
+
+## Allow the API to spin up in multiple instances
+
+> We have a fully working API... all is well!
+
+> However, in order to use this API with the upcoming Advanced React walkthrough project, we’d like to ask you to add two environment variables in the SETTINGS.py file.
+
+`ALLOWED_HOST`, so that it’s not hardcoded and you could spin up multiple API instances, as they would all be deployed to different URLs.
+`CLIENT_ORIGIN_DEV`, so that you can access your deployed API when developing the client-side app in gitpod.
+
+**Steps**
+#### Part 1: Adding ALLOWED_HOSTS:
+1. In `settings.py`, in the `ALLOWED_HOSTS` list, copy your ‘`... .herokuapp.com`’ string.
+```py
+ALLOWED_HOSTS = [
+    '... .herokuapp.com',
+    'localhost',
+]
+```
+
+2. Log in to heroku.com and select your API application.
+    - Click “settings”
+    - Click “Reveal config vars”
+
+3. Add the new key of `ALLOWED_HOST` with the value for your deployed Heroku application URL that we copied from `settings.py`
+    - `ALLOWED_HOST` : `'... .herokuapp.com'`
+
+4. Back in `settings.py`, replace your `ALLOWED HOSTS` list `'... .herokuapp.com'` string we just copied with the `ALLOWED_HOST` environment variable.
+    ```py
+    ALLOWED_HOSTS = [
+    os.environ.get('ALLOWED_HOST'),
+    'localhost',
+    ]
+    ```
+
+#### Part 2: Adding CLIENT_ORIGIN_DEV:
+**Part 2 is only required if you are using a Gitpod workspace**
+
+Note:
+> In order to make our application more secure and accommodate the way Gitpod works by changing the workspace URL regularly, the below code has been provided for you to add to your project.
+
+The following code works as follows:
+1. When the CLIENT_ORIGIN_DEV environment variable is defined, the unique part of your gitpod preview URL is extracted.
+2. It is then included in the regular expression provided by us so that the gitpod workspace is still connected to our API when gitpod rotates the workspace URL.
+
+**steps**
+1. Import the regular expression module at the top of your `settings.py` file. We will need this to manipulate the `CLIENT_ORIGIN_DEV` URL string.
+    ```py
+    import re
+    ```
+
+2. Replace the `else` statement and body for `if 'CLIENT_ORIGIN' in os.environ`: with the following code:
+    -   ```py
+        if 'CLIENT_ORIGIN_DEV' in os.environ:
+            extracted_url = re.match(r'^.+-', os.environ.get('CLIENT_ORIGIN_DEV', ''), re.IGNORECASE).group(0)    
+        else:    
+            CORS_ALLOWED_ORIGIN_REGEXES = [
+            rf"{extracted_url}(eu|us)\d+\w\.gitpod\.io$",
+            ]
+        ```
+
+This code snippet will be used in the upcoming walkthrough project to allow our API to talk to our development environment. The value for CLIENT_ORIGIN_DEV will be set in that walkthrough.
+
+
+#### Part 3: Adding CLIENT_ORIGIN_DEV:
+**Part 3 is only required if you are using a Codeanywhere workspace**
+
+Note:
+In order to make our application more secure, the below code has been provided for you to add to your project.
+
+The following code works as follows:
+1. When the CLIENT_ORIGIN_DEV environment variable is defined, the unique part of your gitpod preview URL is extracted.
+2. It is then included in the regular expression provided by us so that the gitpod workspace is still connected to our API when gitpod rotates the workspace URL.
+
+Import the regular expression module at the top of your settings.py file. We will need this to manipulate the CLIENT_ORIGIN_DEV URL string.
+```py
+import re
+```
+
+3. remove the `else` statement and body for the `if 'CLIENT_ORIGIN' in os.environ:` statement and replace it with another `if` statement shown below:
+```py
+if 'CLIENT_ORIGIN' in os.environ:
+    CORS_ALLOWED_ORIGINS = [
+        os.environ.get('CLIENT_ORIGIN')
+    ]
+if 'CLIENT_ORIGIN_DEV' in os.environ:
+    extracted_url = re.match(r'^.+-', os.environ.get('CLIENT_ORIGIN_DEV', ''), re.IGNORECASE).group(0)
+    CORS_ALLOWED_ORIGIN_REGEXES = [
+        rf"{extracted_url}(eu|us)\d+\w\.gitpod\.io$",
+    ]
+```
+
+This code snippet will be used in the upcoming walkthrough project to allow our API to talk to our development environment. The value for CLIENT_ORIGIN_DEV will be set in that walkthrough.
+
+#### Part 4: Pushing to Github and Deploying:
+
+1. Git add, commit and push the changes to your settings.py file to GitHub
+2. Return to your Heroku application for this API project
+3. Click on the “Deploy” tab
+4. Scroll down and click “Deploy branch”
+
+Now your project is all set up and ready for us to use with React in the next module.
